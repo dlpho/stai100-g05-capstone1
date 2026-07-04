@@ -22,3 +22,4 @@ stai100-g05-capstone1/
 ├── Dockerfile           <-- Container setup
 ├── requirements.txt
 └── README.md
+```
