@@ -1,8 +1,28 @@
-# stai100-g05-capstone1
-- [group master docs](https://docs.google.com/document/d/1MIx3Yz2JKJ0vJe9jvgeRk3OjS7KXhUzn9Og1oPNU-Dw/edit?usp=sharing)
+# 🌦️[agent_name]: Weather AI Assistant
 
-## Environment Setuo
-to follow
+TODO: project overview
+intelligent conversational weather
+
+## Installation & Setup
+
+
+
+## Architecture Overview
+TODO: system diagram here
+
+## Module Ownership
+### 📋 Module Ownership Table
+
+| Team Member | Assigned Modules |
+| :--- | :--- |
+| **Denise Liana Ho**  | RAG, API Endpoint, LLMOps, Dockerization  |
+| **Simon Anthony Libut** | Structured Outputs, Disambiguation, SQL, Tool Use | 
+| **Jericho Migell Reyes** | Prompt Engineering, Memory, Guardrails, ReAct|
+
+
+
+# delete later
+- [group master docs](https://docs.google.com/document/d/1MIx3Yz2JKJ0vJe9jvgeRk3OjS7KXhUzn9Og1oPNU-Dw/edit?usp=sharing)
 
 ## Repository Structure
 ideally, feel free to deviate
