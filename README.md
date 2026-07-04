@@ -16,8 +16,8 @@ TODO: system diagram here
 | Team Member | Assigned Modules |
 | :--- | :--- |
 | **Denise Liana Ho**  | RAG, API Endpoint, LLMOps, Dockerization  |
-| **Simon Anthony Libut** | Structured Outputs, Disambiguation, SQL, Tool Use | 
-| **Jericho Migell Reyes** | Prompt Engineering, Memory, Guardrails, ReAct|
+| **Simon Anthony Libut** | Prompt Engineering, Memory, Guardrails, ReAct | 
+| **Jericho Migell Reyes** | Structured Outputs, Disambiguation, SQL, Tool Use |
 
 
 
