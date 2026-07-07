@@ -22,7 +22,7 @@ brgy_gdf['latitude'] = lng_lat_centroids.y
 brgy_gdf['longitude'] = lng_lat_centroids.x
 
 # Get & Rename
-brgy_final = brgy_gdf[['ADM4_EN', 'ADM3_EN', 'ADM2_EN', 'latitude', 'longitude']]
+brgy_final = brgy_gdf[['ADM4_EN', 'ADM3_EN', 'ADM2_EN', 'ADM1_EN', 'latitude', 'longitude']]
 brgy_final = brgy_final.rename(columns={
     'ADM4_EN': 'barangay',
     'ADM3_EN': 'municipality_city',
