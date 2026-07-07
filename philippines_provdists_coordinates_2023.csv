@@ -1,0 +1,89 @@
+province,region,latitude,longitude
+Ilocos Norte,Region I (Ilocos Region),18.20459640489759,120.7299999550582
+Ilocos Sur,Region I (Ilocos Region),17.247068021263495,120.54718828072617
+La Union,Region I (Ilocos Region),16.580366927857035,120.42451819536193
+Pangasinan,Region I (Ilocos Region),15.999672722479456,120.31251362793358
+Batanes,Region II (Cagayan Valley),20.55220836764277,121.88803274883641
+Cagayan,Region II (Cagayan Valley),18.093538315066098,121.76082891110634
+Isabela,Region II (Cagayan Valley),16.987073358249265,121.96113127898381
+Nueva Vizcaya,Region II (Cagayan Valley),16.305279746343558,121.17181690258485
+Quirino,Region II (Cagayan Valley),16.29446166228158,121.59545104414103
+Bataan,Region III (Central Luzon),14.660422834689955,120.4544259554945
+Bulacan,Region III (Central Luzon),14.97861601658849,121.05847123279369
+Nueva Ecija,Region III (Central Luzon),15.619597664873712,121.02167261035025
+Pampanga,Region III (Central Luzon),15.058489921748,120.64719833089151
+Tarlac,Region III (Central Luzon),15.47829450787392,120.47615743319972
+Zambales,Region III (Central Luzon),15.286127431578489,120.14405413196098
+Aurora,Region III (Central Luzon),15.922812842207223,121.69931394152403
+Batangas,Region IV-A (Calabarzon),13.899446317805737,121.03009758349353
+Cavite,Region IV-A (Calabarzon),14.25514689826503,120.86845438035306
+Laguna,Region IV-A (Calabarzon),14.241381531658666,121.36642965700915
+Quezon,Region IV-A (Calabarzon),14.16590014173387,121.96315175767607
+Rizal,Region IV-A (Calabarzon),14.617348659348517,121.26254154158987
+Albay,Region V (Bicol Region),13.209749975234729,123.61574903496036
+Camarines Norte,Region V (Bicol Region),14.143221552476676,122.72770185171274
+Camarines Sur,Region V (Bicol Region),13.704413306976496,123.26323210016096
+Catanduanes,Region V (Bicol Region),13.78316258666237,124.23644411317983
+Masbate,Region V (Bicol Region),12.294367901605991,123.55279532432463
+Sorsogon,Region V (Bicol Region),12.85429456063135,123.9286387980183
+Aklan,Region VI (Western Visayas),11.609566309940696,122.2480960211755
+Antique,Region VI (Western Visayas),11.12635694289004,122.0681758554544
+Capiz,Region VI (Western Visayas),11.369936503289937,122.63285532259516
+Iloilo,Region VI (Western Visayas),11.007833916479157,122.60563535351423
+Negros Occidental,Region VI (Western Visayas),10.310601127255858,122.98649847322952
+Guimaras,Region VI (Western Visayas),10.568777002620553,122.6140747446759
+Bohol,Region VII (Central Visayas),9.853932259154798,124.19764636676774
+Cebu,Region VII (Central Visayas),10.354962743773656,123.75484807228388
+Negros Oriental,Region VII (Central Visayas),9.606604553434954,123.03339876073657
+Siquijor,Region VII (Central Visayas),9.185203658931972,123.5886621413279
+Eastern Samar,Region VIII (Eastern Visayas),11.647007254059536,125.38127738023661
+Leyte,Region VIII (Eastern Visayas),10.974326390872163,124.75607262680218
+Northern Samar,Region VIII (Eastern Visayas),12.41121834027992,124.79184663388375
+Samar (Western Samar),Region VIII (Eastern Visayas),11.846192825684632,124.94066529343614
+Southern Leyte,Region VIII (Eastern Visayas),10.29118075682612,125.05196582942132
+Biliran,Region VIII (Eastern Visayas),11.596695886596752,124.47327630358
+Zamboanga del Norte,Region IX (Zamboanga Peninsula),8.049139476368051,122.80653468627165
+Zamboanga del Sur,Region IX (Zamboanga Peninsula),7.679138718568052,122.99332214184736
+Zamboanga Sibugay,Region IX (Zamboanga Peninsula),7.694743854658474,122.7254239613988
+City of Isabela (not a province),Region IX (Zamboanga Peninsula),6.650583942330653,121.98685029926334
+Bukidnon,Region X (Northern Mindanao),8.018584950416288,125.00700958781324
+Camiguin,Region X (Northern Mindanao),9.171994970741403,124.71774867428961
+Lanao del Norte,Region X (Northern Mindanao),8.026699103075611,124.03776254523504
+Misamis Occidental,Region X (Northern Mindanao),8.323984903784268,123.69023900495228
+Misamis Oriental,Region X (Northern Mindanao),8.6326387572667,124.79140369863094
+Davao del Norte,Region XI (Davao Region),7.585183348698723,125.6422804277487
+Davao del Sur,Region XI (Davao Region),7.016075787367996,125.345273568241
+Davao Oriental,Region XI (Davao Region),7.2511300860395815,126.2980734998039
+Davao de Oro (Compostela Valley),Region XI (Davao Region),7.5731116104241005,126.02299796088556
+Davao Occidental,Region XI (Davao Region),6.097980429555937,125.54053876238137
+Cotabato (North Cotabato),Region XII (Soccsksargen),7.208663720021735,124.87037349414817
+South Cotabato,Region XII (Soccsksargen),6.284594142641725,124.85319698646364
+Sultan Kudarat,Region XII (Soccsksargen),6.535020821198023,124.4312955933595
+Sarangani,Region XII (Soccsksargen),6.059679872340241,125.15845416978516
+Metropolitan Manila First District,National Capital Region (NCR),14.600621583204736,120.98546127159507
+Metropolitan Manila Second District,National Capital Region (NCR),14.656986324885704,121.0666720615109
+Metropolitan Manila Third District,National Capital Region (NCR),14.711076710532083,120.99422759858044
+Metropolitan Manila Fourth District,National Capital Region (NCR),14.480046001382053,121.02559568148462
+Abra,Cordillera Administrative Region (CAR),17.578165760040655,120.80314618003564
+Benguet,Cordillera Administrative Region (CAR),16.542518320493944,120.69886848779817
+Ifugao,Cordillera Administrative Region (CAR),16.848457123469906,121.20707439093584
+Kalinga,Cordillera Administrative Region (CAR),17.430961830059285,121.27941370872225
+Mountain Province,Cordillera Administrative Region (CAR),17.10136521553568,121.12907739315303
+Apayao,Cordillera Administrative Region (CAR),18.1055468959204,121.18758925835132
+Agusan del Norte,Region XIII (Caraga),9.031198130539295,125.53562528962516
+Agusan del Sur,Region XIII (Caraga),8.421447068303648,125.72912200196305
+Surigao del Norte,Region XIII (Caraga),9.670770604163268,125.73755582681498
+Surigao del Sur,Region XIII (Caraga),8.77584960998493,126.11325137630371
+Dinagat Islands,Region XIII (Caraga),10.17089714879322,125.60244000101406
+Marinduque,Mimaropa Region,13.39129231470684,121.97190327627872
+Occidental Mindoro,Mimaropa Region,12.971700267352476,120.89322242926455
+Oriental Mindoro,Mimaropa Region,12.965992008917087,121.2635142622024
+Palawan,Mimaropa Region,9.9730074182296,118.73701002790665
+Romblon,Mimaropa Region,12.435704271349088,122.2345085439265
+Basilan,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),6.565457716135882,122.02907534979353
+Lanao del Sur,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),7.796687325532419,124.33620212265895
+Sulu,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),5.953219312807166,121.05414271127351
+Tawi-Tawi,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),5.239513716373673,119.90056946215374
+Maguindanao del Norte,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),7.187605922126104,124.24326555351129
+Maguindanao del Sur,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),6.869707065004451,124.53124911443604
+Special Geographic Area,Bangsamoro Autonomous Region In Muslim Mindanao (BARMM),7.142705081892708,124.65747978340299
