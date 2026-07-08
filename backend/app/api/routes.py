@@ -1,18 +1,9 @@
 from fastapi import APIRouter
-from fastapi.middleware.cors import CORSMiddleware
 import mlflow
 from app.models.schemas import UserQuery
 from app.services.llm_service import compiled_graph
 
 router = APIRouter()
-
-router.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @router.post("/chat")
 def chat_endpoint(query: UserQuery):
