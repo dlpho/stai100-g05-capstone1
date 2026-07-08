@@ -29,9 +29,8 @@ You are an expert AI Architect. Build a "Weather Agentic AI for Filipino Farmers
 You must implement the Open-Meteo tools using `requests_cache.CachedSession` and `retry` for robust API calls. 
 
 1. **`weather_analytics` (Historical):** - **Endpoint:** `https://archive-api.open-meteo.com/v1/archive`
-   - **Parameters:** `latitude`, `longitude`, `start_date`, `end_date`, `daily` (list of variables), `hourly` (list of variables).
+   - **Parameters:** `latitude`, `longitude`, `start_date`, `end_date`, `daily` (list of variables).
    - **Allowed Daily Variables:** `precipitation_sum`, `rain_sum`, `sunshine_duration`, `temperature_2m_max`, `temperature_2m_min`, `temperature_2m_mean`, `wind_speed_10m_max`, `et0_fao_evapotranspiration`, `soil_moisture_0_to_100cm_mean`, `vapour_pressure_deficit_max`, `relative_humidity_2m_mean`, `relative_humidity_2m_max`, `soil_temperature_0_to_100cm_mean`.
-   - **Allowed Hourly Variables:** `wind_speed_10m`, `wind_direction_10m`, `wind_gusts_10m`.
    - **Logic:** The Python backend converts the data to Pandas dataframes, calculates macro behaviors (peaks/averages), and outputs a Markdown string.
 
 2. **`weather_forecast` (Future):** - **Endpoint:** `https://api.open-meteo.com/v1/forecast`
@@ -90,9 +89,9 @@ Implement frontend/app.py (Port 8000).
 Write README.md similar to the following:
 
 ====
-# 🌦️ WeatherAI: Philippine Weather AI Assistant
+# 🌦️ WeatherTato: Philippine Weather AI Assistant
 
-WeatherAI is a localized conversational weather assistant tailored for farmers, agricultural workers, dispatchers, and delivery riders in the Philippines. It operates under strict guardrail safety guidelines to translate weather data into objective facts without providing operational agricultural advice.
+WeatherTato is a localized conversational weather assistant tailored for farmers, agricultural workers, dispatchers, and delivery riders in the Philippines. It operates under strict guardrail safety guidelines to translate weather data into objective facts without providing operational agricultural advice.
 
 ---
 
@@ -159,7 +158,7 @@ WeatherAI is a localized conversational weather assistant tailored for farmers, 
 
 System prompt for the actual LLM should be something like this
 
-You are WeatherAI, a reliable localized weather assistant for agricultural workers and farmers who benefit from info of weather
+You are WeatherTato (A Weather AI Agent), a reliable localized weather assistant for agricultural workers and farmers who benefit from info of weather
   Translate API data into plain, simple, and accessible language.
 
   RULES & STRICT LIMITATIONS:

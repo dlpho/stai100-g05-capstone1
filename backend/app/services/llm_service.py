@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
 from app.models.schemas import AgentState, LocationEntity
 from app.core.guardrails import detect_prompt_injection, remove_pii, is_weather_related, requests_farming_advice
 from app.services.meteo_service import get_weather_analytics, get_weather_forecast
@@ -23,48 +24,213 @@ llm = ChatOpenAI(
     temperature=0,
 )
 
-# Prompts
-INTENT_PROMPT = """Classify the user's intent into ONE of the following categories:
-- `analytics`: Wants historical weather data (past dates).
-- `forecast`: Wants future weather predictions (future dates).
-- `general`: Asking general questions about what you can do.
-- `off-topic`: Anything else.
 
-Return ONLY the category name.
-User Query: {query}"""
+# --- MODULE 6: GUARDRAILS ---
+def node_guardrails(state: AgentState):
+    query = state.user_query
+    clean_query = remove_pii(query)
+    
+    if detect_prompt_injection(clean_query):
+        return {"error": "Request blocked due to policy violation.", "user_query": clean_query}
+        
+    if not is_weather_related(clean_query) and not requests_farming_advice(clean_query):
+        # Allow classification to handle non-weather general queries if needed, but the requirements say block
+        # Actually, let the classifier route to off-topic
+        pass
+        
+    if requests_farming_advice(clean_query):
+        return {"error": "I am a weather assistant and cannot provide farming, planting, or crop management advice.", "user_query": clean_query}
+        
+    return {"user_query": clean_query}
 
-SLOT_PROMPT = """You are a slot extraction assistant for a weather information system in the Philippines.
-Today's Date: {today} ({weekday}).
 
-The user's intent is: {intent}
+# --- MODULE 1: PROMPT ENGINEERING (Few-Shot Classifier System Prompt) ---
+# --- MODULE 2: STRUCTURED OUTPUTS (Intent Classifier JSON) ---
+# Classifier Prompts
+# ── 1. Define Categories ─────────────────────────────────────────────────
+WEATHER_INTENTS = {
+    "analytics": "User wants historical weather data for past dates (e.g., 'What was the weather like in Cebu last year?', 'Give me the temperature on 2025-05-10')",
+    "forecast":  "User wants future weather predictions or forecasts (e.g., 'What is the forecast for Manila tomorrow?', 'Will it rain next week?')",
+    "general":   "User is asking general questions about what the assistant can do (e.g., 'What can you help me with?', 'How do I use this system?')",
+    "off-topic": "Anything unrelated to weather or the assistant (e.g., 'Who won the World Cup?', 'Write a python script')",
+}
 
-Extract the following information from the weather query:
-- location: Try to identify the specific location mentioned.
-- start_date: Format as YYYY-MM-DD if present.
-- end_date: Format as YYYY-MM-DD if present.
-- daily_vars: List of valid daily variables requested (e.g., ["temperature_2m_max", "precipitation_sum"]). If vague, default to ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"].
+_intents_str = "\n".join([f"- {k}: {v}" for k, v in WEATHER_INTENTS.items()])
 
-Date Resolution Rules (for start_date and end_date):
-1. Convert all time periods to exact YYYY-MM-DD formats.
-2. If the user asks about a specific year (e.g. 'in 2023'), start_date is YYYY-01-01 and end_date is YYYY-12-31.
-3. If the user asks about a range of years (e.g. 'from 2021 to 2023'), start_date is 2021-01-01 and end_date is 2023-12-31.
-4. If the user asks about a specific month or month range (e.g. 'from Jan to March 2024'), resolve the exact start and end days for those months.
-5. Resolve relative dates ('yesterday', 'last month', 'last year') relative to today's date ({today}).
-6. If the query is about historical weather, start_date and end_date cannot exceed today's date ({today}). Cap historical dates at yesterday.
-7. If no specific dates are mentioned and it is a forecast, default to {today}.
+# ── 2. System Prompt ──────────────────────────────────────────────────────
+INTENT_SYSTEM_PROMPT = (
+    "You are an intent classifier for a weather information assistant.\n\n"
+    "Classify the user's message into EXACTLY ONE of these intents:\n"
+    f"{_intents_str}\n\n"
+    "Respond with ONLY a JSON object in this exact format:\n"
+    '{"intent": "INTENT_NAME", "confidence": 0.95, "reasoning": "brief reason"}\n\n'
+    "Rules:\n"
+    "- intent must be one of the intent names above\n"
+    "- confidence is a float between 0 and 1\n"
+    "- choose the most likely intent if the message could fit multiple"
+)
 
-Return a JSON object:
-{{
-  "location": "location string or empty",
-  "start_date": "YYYY-MM-DD or empty",
-  "end_date": "YYYY-MM-DD or empty",
-  "daily_vars": [],
-}}
+# ── 3. Few-Shot Examples ──────────────────────────────────────────────────
+FEW_SHOT_EXAMPLES = [
+    {"role": "user",      "content": "What is the forecast for Manila City tomorrow?"},
+    {"role": "assistant", "content": '{"intent": "forecast", "confidence": 0.98, "reasoning": "User explicitly wants a future weather forecast"}'},
+    {"role": "user",      "content": "Give me the temperature in Cebu on 2025-05-10."},
+    {"role": "assistant", "content": '{"intent": "analytics", "confidence": 0.96, "reasoning": "User is asking for weather data on a specific historical date"}'},
+    {"role": "user",      "content": "What can you help me with?"},
+    {"role": "assistant", "content": '{"intent": "general", "confidence": 0.97, "reasoning": "User is asking about the assistant\'s capabilities"}'},
+    {"role": "user",      "content": "Who won the World Cup in 2022?"},
+    {"role": "assistant", "content": '{"intent": "off-topic", "confidence": 0.95, "reasoning": "User asking a general question unrelated to weather"}'},
+]
 
-User Query: {query}
-"""
+def node_classifier(state: AgentState):
+    if state.error:
+        return state
+        
+    # Compile prompt with few-shots
+    intent_prompt = INTENT_SYSTEM_PROMPT + "\n\n### Examples:\n"
+    for ex in FEW_SHOT_EXAMPLES:
+        role = "User" if ex["role"] == "user" else "Assistant"
+        intent_prompt += f"{role}: {ex['content']}\n"
+    intent_prompt += f"\nUser: {state.user_query}\nAssistant: "
+    
+    response = llm.invoke(intent_prompt)
+    try:
+        text = response.content
+        md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+        if md_match:
+            text = md_match.group(1).strip()
+        data = json.loads(text)
+        intent = data.get("intent", "").lower()
+        print("Classifier LLM JSON Result:", json.dumps(data, indent=2))
+    except Exception as e:
+        print(f"Failed to parse classifier intent JSON: {e}. Fallback to string search.")
+        intent = "general"
+        text_lower = response.content.lower()
+        for key in WEATHER_INTENTS.keys():
+            if key in text_lower:
+                intent = key
+                break
+                
+    # Ensure it's one of the expected intents
+    if intent not in ["analytics", "forecast", "general", "off-topic"]:
+        intent = "general"
+        
+    return {"intent": intent}
 
-GENERATION_PROMPT = """You are WeatherTato (A Weather AI Agent), a reliable localized weather assistant for agricultural workers and farmers who benefit from info of weather.
+
+# --- MODULE 1: PROMPT ENGINEERING (Tool Caller) ---
+
+def _resolve_location(location_str: str):
+    if not location_str:
+        return None
+    ref_lines = search_location(location_str)
+    if ref_lines:
+        first_match = ref_lines[0]
+        parts = [p.strip() for p in first_match.split("|")]
+        if len(parts) >= 6:
+            return LocationEntity(latitude=parts[-2], longitude=parts[-1], barangay=location_str)
+    return LocationEntity(latitude="14.5995", longitude="120.9842", barangay=location_str)
+
+@tool
+def get_weather_analytics_tool(location: str, start_date: str, end_date: str, daily_vars: list[str], granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none") -> str:
+    """Gets historical weather analytics data for a location.
+    Args:
+        location: The name of the city, municipality, or province.
+        start_date: Exact start date in YYYY-MM-DD (must be a past date).
+        end_date: Exact end date in YYYY-MM-DD (must be a past date).
+        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
+        granularity: 'day', 'month', or 'year'. Default 'day'.
+        inner_aggregation: 'mean', 'max', or 'min'. Default 'mean'.
+        find_extreme: 'highest', 'lowest', or 'none'. Default 'none'.
+    """
+    loc = _resolve_location(location)
+    if not loc:
+        return "Error: Location not provided."
+    if not daily_vars:
+        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
+    return get_weather_analytics(float(loc.latitude), float(loc.longitude), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
+
+@tool
+def get_weather_forecast_tool(location: str, daily_vars: list[str]) -> str:
+    """Gets future weather forecast for a location. 
+    Dates are always for the upcoming week from today.
+    Args:
+        location: The name of the city, municipality, or province.
+        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
+    """
+    loc = _resolve_location(location)
+    if not loc:
+        return "Error: Location not provided."
+    if not daily_vars:
+        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
+    return get_weather_forecast(float(loc.latitude), float(loc.longitude), daily_vars)
+
+def node_tool_caller(state: AgentState):
+    if state.error or state.intent not in ["analytics", "forecast"]:
+        return state
+        
+    import datetime
+    import json
+    today_dt = datetime.datetime.now()
+    today_str = today_dt.strftime("%Y-%m-%d")
+    weekday_str = today_dt.strftime("%A")
+    
+    tools = [get_weather_analytics_tool, get_weather_forecast_tool]
+    llm_with_tools = llm.bind_tools(tools)
+    
+    prompt = (
+        f"Today's Date: {today_str} ({weekday_str}).\n"
+        f"The user intent is: {state.intent}\n\n"
+        "Rules:\n"
+        "1. Convert all time periods to exact YYYY-MM-DD formats.\n"
+        "2. Resolve relative dates ('yesterday', 'last month') relative to today's date.\n"
+        "3. If historical, dates cannot exceed today. Cap them at yesterday.\n"
+        "4. If the user did not specify a location, DO NOT call any tool. Return a regular text response asking for the location.\n\n"
+        f"User Query: {state.user_query}"
+    )
+    
+    response = llm_with_tools.invoke(prompt)
+    if response.tool_calls:
+        print("LLM Tool Calls:", json.dumps(response.tool_calls, indent=2))
+        return {"tool_calls": response.tool_calls}
+    else:
+        return {"waiting_for_location": True}
+
+# --- MODULE 8: TOOL USE (Weather API Integrations) ---
+def node_tool_execution(state: AgentState):
+    if state.error and not state.error.startswith("{"):
+        return state
+    if state.waiting_for_location:
+        return state
+        
+    if not state.tool_calls:
+        return state
+        
+    import json
+    try:
+        tool_call = state.tool_calls[0] # Just execute the first one
+        name = tool_call["name"]
+        args = tool_call["args"]
+        
+        print(f"""
+=== EXECUTING TOOL {name} ===
+{json.dumps(args, indent=2)}
+================================
+""")
+        
+        md = ""
+        if name == "get_weather_analytics_tool":
+            md = get_weather_analytics_tool.invoke(args)
+        elif name == "get_weather_forecast_tool":
+            md = get_weather_forecast_tool.invoke(args)
+        
+        return {"weather_data_markdown": md, "error": None}
+    except Exception as e:
+        return {"error": f"Tool execution failed: {e}"}
+
+
+# Generation Prompts (Final Prompt)
+GENERATION_PROMPT = """You are WeatherTato, a reliable weather assistant for agricultural workers and farmers who benefit from info of weather.
 Translate API data into plain, simple, and accessible language.
 
 RULES & STRICT LIMITATIONS:
@@ -101,139 +267,6 @@ Weather Data Context:
 {weather_data}
 """
 
-# Nodes
-def node_guardrails(state: AgentState):
-    query = state.user_query
-    clean_query = remove_pii(query)
-    
-    if detect_prompt_injection(clean_query):
-        return {"error": "Request blocked due to policy violation.", "user_query": clean_query}
-        
-    if not is_weather_related(clean_query) and not requests_farming_advice(clean_query):
-        # Allow classification to handle non-weather general queries if needed, but the requirements say block
-        # Actually, let the classifier route to off-topic
-        pass
-        
-    if requests_farming_advice(clean_query):
-        return {"error": "I am a weather assistant and cannot provide farming, planting, or crop management advice.", "user_query": clean_query}
-        
-    return {"user_query": clean_query}
-
-def node_classifier(state: AgentState):
-    if state.error:
-        return state
-        
-    prompt = INTENT_PROMPT.format(query=state.user_query)
-    response = llm.invoke(prompt)
-    intent = response.content.strip().lower()
-    
-    # Ensure it's one of the expected intents
-    if intent not in ["analytics", "forecast", "general", "off-topic"]:
-        intent = "general"
-        
-    return {"intent": intent}
-
-def node_slot_extraction(state: AgentState):
-    if state.error or state.intent not in ["analytics", "forecast"]:
-        return state
-        
-    today_dt = datetime.datetime.now()
-    today_str = today_dt.strftime("%Y-%m-%d")
-    weekday_str = today_dt.strftime("%A")
-    
-    slot_defs = (
-        "- location: Try to identify the specific location mentioned.\n"
-        "- start_date: Exact start date in YYYY-MM-DD.\n"
-        "- end_date: Exact end date in YYYY-MM-DD.\n"
-        '- daily_vars: List of valid daily variables requested. If vague, default to ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"].\n\n'
-        "Allowed Daily Variables: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean"
-    )
-        
-    prompt = SLOT_PROMPT.format(
-        today=today_str,
-        weekday=weekday_str,
-        intent=state.intent,
-        slot_definitions=slot_defs,
-        query=state.user_query
-    )
-    response = llm.invoke(prompt)
-    try:
-        # Simple extraction of JSON from response
-        text = response.content
-        md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-        if md_match:
-            text = md_match.group(1).strip()
-        data = json.loads(text)
-        print("LLM JSON Result:", json.dumps(data, indent=2))
-        
-        location_str = data.get("location", "")
-        start_date = data.get("start_date", "")
-        end_date = data.get("end_date", "")
-        daily_vars = data.get("daily_vars", ["temperature_2m_max", "precipitation_sum"])
-        
-        if not location_str:
-            return {"waiting_for_location": True}
-            
-        # Parse location string to lat/long using location_search
-        ref_lines = search_location(location_str)
-        if ref_lines:
-            first_match = ref_lines[0]
-            # parse `[level] name | parent | ... | lat | long`
-            parts = [p.strip() for p in first_match.split("|")]
-            if len(parts) >= 6:
-                lat = parts[-2]
-                lon = parts[-1]
-                loc_entity = LocationEntity(latitude=lat, longitude=lon, barangay=location_str)
-            else:
-                lat = "14.5995"
-                lon = "120.9842"
-                loc_entity = LocationEntity(latitude=lat, longitude=lon, barangay=location_str)
-        else:
-            # Fallback coordinates if location search fails but location was provided
-            loc_entity = LocationEntity(latitude="14.5995", longitude="120.9842", barangay=location_str)
-            
-        # Temporarily store vars in state (adding them via returned dict, but they need to be on the model)
-        # We can pass them through start_date/end_date for simplicity or extend the model
-        return {
-            "location": loc_entity,
-            "start_date": start_date,
-            "end_date": end_date,
-            "daily_vars": daily_vars, # Will need to add these to State schema if needed, but for now we'll process here
-            # Hack for state passage:
-            "error": json.dumps({"daily": daily_vars}) if not state.error else state.error
-        }
-    except Exception as e:
-        return {"error": f"Failed to extract parameters: {e}"}
-
-def node_tool_execution(state: AgentState):
-    if state.error and not state.error.startswith("{"):
-        return state
-    if state.waiting_for_location:
-        return state
-        
-    try:
-        lat = float(state.location.latitude)
-        lon = float(state.location.longitude)
-        
-        # Extract vars from the hack
-        vars_dict = json.loads(state.error) if state.error and state.error.startswith("{") else {"daily": []}
-        print(f"\n=== TOOL EXECUTION VARS JSON ===\n{json.dumps(vars_dict, indent=2)}\n================================\n")
-        
-        daily_vars = vars_dict.get("daily", ["temperature_2m_max", "precipitation_sum"])
-        
-        if state.intent == "analytics":
-            sd = state.start_date or "2023-01-01"
-            ed = state.end_date or "2023-01-31"
-            md = get_weather_analytics(lat, lon, sd, ed, daily_vars)
-            return {"weather_data_markdown": md, "error": None} # clear the hack
-        elif state.intent == "forecast":
-            md = get_weather_forecast(lat, lon, daily_vars)
-            return {"weather_data_markdown": md, "error": None}
-    except Exception as e:
-        return {"error": f"Tool execution failed: {e}"}
-        
-    return state
-
 def node_generation(state: AgentState):
     if state.error and not state.error.startswith("{"):
         return {"final_response": state.error}
@@ -261,28 +294,30 @@ def router_after_guardrails(state: AgentState):
     
 def router_after_classifier(state: AgentState):
     if state.intent in ["analytics", "forecast"]:
-        return "slot_extraction"
+        return "tool_caller"
     return "generation"
     
-def router_after_slots(state: AgentState):
+def router_after_tool_caller(state: AgentState):
     if state.error and not state.error.startswith("{"):
         return "generation"
     if state.waiting_for_location:
         return "generation"
     return "tool_execution"
 
+
+# --- MODULE 7: REACT / STATE GRAPH AGENT ---
 # Build Graph
 workflow = StateGraph(AgentState)
 workflow.add_node("guardrails", node_guardrails)
 workflow.add_node("classifier", node_classifier)
-workflow.add_node("slot_extraction", node_slot_extraction)
+workflow.add_node("tool_caller", node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
 workflow.add_node("generation", node_generation)
 
 workflow.add_edge(START, "guardrails")
 workflow.add_conditional_edges("guardrails", router_after_guardrails)
 workflow.add_conditional_edges("classifier", router_after_classifier)
-workflow.add_conditional_edges("slot_extraction", router_after_slots)
+workflow.add_conditional_edges("tool_caller", router_after_tool_caller)
 workflow.add_edge("tool_execution", "generation")
 workflow.add_edge("generation", END)
 
