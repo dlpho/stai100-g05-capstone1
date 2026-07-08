@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 langchain
+langchain_openai
 langgraph
 pydantic
 pydantic-settings
