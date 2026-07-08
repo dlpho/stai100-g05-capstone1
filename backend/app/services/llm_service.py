@@ -8,6 +8,7 @@ from backend.app.services.location_search import search_location
 from typing import Dict, Any
 import json
 import re
+import datetime
 
 # Initialize LLM
 llm = ChatOpenAI(
@@ -27,24 +28,33 @@ INTENT_PROMPT = """Classify the user's intent into ONE of the following categori
 Return ONLY the category name.
 User Query: {query}"""
 
-SLOT_PROMPT = """Extract the following information from the weather query:
+SLOT_PROMPT = """You are a slot extraction assistant for a weather information system in the Philippines.
+Today's Date: {today} ({weekday}).
+
+The user's intent is: {intent}
+
+Extract the following information from the weather query:
 - location: Try to identify the specific location mentioned.
 - start_date: Format as YYYY-MM-DD if present.
 - end_date: Format as YYYY-MM-DD if present.
 - daily_vars: List of valid daily variables requested (e.g., ["temperature_2m_max", "precipitation_sum"]). If vague, default to ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"].
-- hourly_vars: List of valid hourly variables requested (e.g., ["wind_speed_10m"]). If vague, leave empty or default to ["wind_speed_10m"].
 
-Allowed Daily Variables: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean
-Allowed Hourly Variables: wind_speed_10m, wind_direction_10m, wind_gusts_10m
+Date Resolution Rules (for start_date and end_date):
+1. Convert all time periods to exact YYYY-MM-DD formats.
+2. If the user asks about a specific year (e.g. 'in 2023'), start_date is YYYY-01-01 and end_date is YYYY-12-31.
+3. If the user asks about a range of years (e.g. 'from 2021 to 2023'), start_date is 2021-01-01 and end_date is 2023-12-31.
+4. If the user asks about a specific month or month range (e.g. 'from Jan to March 2024'), resolve the exact start and end days for those months.
+5. Resolve relative dates ('yesterday', 'last month', 'last year') relative to today's date ({today}).
+6. If the query is about historical weather, start_date and end_date cannot exceed today's date ({today}). Cap historical dates at yesterday.
+7. If no specific dates are mentioned and it is a forecast, default to {today}.
 
 Return a JSON object:
-{
+{{
   "location": "location string or empty",
   "start_date": "YYYY-MM-DD or empty",
   "end_date": "YYYY-MM-DD or empty",
   "daily_vars": [],
-  "hourly_vars": []
-}
+}}
 
 User Query: {query}
 """
@@ -117,7 +127,25 @@ def node_slot_extraction(state: AgentState):
     if state.error or state.intent not in ["analytics", "forecast"]:
         return state
         
-    prompt = SLOT_PROMPT.format(query=state.user_query)
+    today_dt = datetime.datetime.now()
+    today_str = today_dt.strftime("%Y-%m-%d")
+    weekday_str = today_dt.strftime("%A")
+    
+    slot_defs = (
+        "- location: Try to identify the specific location mentioned.\n"
+        "- start_date: Exact start date in YYYY-MM-DD.\n"
+        "- end_date: Exact end date in YYYY-MM-DD.\n"
+        '- daily_vars: List of valid daily variables requested. If vague, default to ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"].\n\n'
+        "Allowed Daily Variables: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean"
+    )
+        
+    prompt = SLOT_PROMPT.format(
+        today=today_str,
+        weekday=weekday_str,
+        intent=state.intent,
+        slot_definitions=slot_defs,
+        query=state.user_query
+    )
     response = llm.invoke(prompt)
     try:
         # Simple extraction of JSON from response
@@ -126,12 +154,12 @@ def node_slot_extraction(state: AgentState):
         if md_match:
             text = md_match.group(1).strip()
         data = json.loads(text)
+        print("LLM JSON Result:", json.dumps(data, indent=2))
         
         location_str = data.get("location", "")
         start_date = data.get("start_date", "")
         end_date = data.get("end_date", "")
         daily_vars = data.get("daily_vars", ["temperature_2m_max", "precipitation_sum"])
-        hourly_vars = data.get("hourly_vars", [])
         
         if not location_str:
             return {"waiting_for_location": True}
@@ -162,7 +190,7 @@ def node_slot_extraction(state: AgentState):
             "end_date": end_date,
             "daily_vars": daily_vars, # Will need to add these to State schema if needed, but for now we'll process here
             # Hack for state passage:
-            "error": json.dumps({"daily": daily_vars, "hourly": hourly_vars}) if not state.error else state.error
+            "error": json.dumps({"daily": daily_vars}) if not state.error else state.error
         }
     except Exception as e:
         return {"error": f"Failed to extract parameters: {e}"}
@@ -178,17 +206,18 @@ def node_tool_execution(state: AgentState):
         lon = float(state.location.longitude)
         
         # Extract vars from the hack
-        vars_dict = json.loads(state.error) if state.error and state.error.startswith("{") else {"daily": [], "hourly": []}
+        vars_dict = json.loads(state.error) if state.error and state.error.startswith("{") else {"daily": []}
+        print(f"\n=== TOOL EXECUTION VARS JSON ===\n{json.dumps(vars_dict, indent=2)}\n================================\n")
+        
         daily_vars = vars_dict.get("daily", ["temperature_2m_max", "precipitation_sum"])
-        hourly_vars = vars_dict.get("hourly", [])
         
         if state.intent == "analytics":
             sd = state.start_date or "2023-01-01"
             ed = state.end_date or "2023-01-31"
-            md = get_weather_analytics(lat, lon, sd, ed, daily_vars, hourly_vars)
+            md = get_weather_analytics(lat, lon, sd, ed, daily_vars)
             return {"weather_data_markdown": md, "error": None} # clear the hack
         elif state.intent == "forecast":
-            md = get_weather_forecast(lat, lon, daily_vars, hourly_vars)
+            md = get_weather_forecast(lat, lon, daily_vars)
             return {"weather_data_markdown": md, "error": None}
     except Exception as e:
         return {"error": f"Tool execution failed: {e}"}

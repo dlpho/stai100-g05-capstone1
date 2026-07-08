@@ -8,7 +8,7 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
-def get_weather_analytics(lat: float, lon: float, start_date: str, end_date: str, daily_vars: list, hourly_vars: list) -> str:
+def get_weather_analytics(lat: float, lon: float, start_date: str, end_date: str, daily_vars: list) -> str:
     url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": lat,
@@ -16,7 +16,6 @@ def get_weather_analytics(lat: float, lon: float, start_date: str, end_date: str
         "start_date": start_date,
         "end_date": end_date,
         "daily": daily_vars,
-        "hourly": hourly_vars,
         "timezone": "Asia/Manila"
     }
     
@@ -40,30 +39,14 @@ def get_weather_analytics(lat: float, lon: float, start_date: str, end_date: str
         daily_df = pd.DataFrame(data=daily_data)
         md_output += "#### Daily Data\n" + daily_df.to_markdown(index=False) + "\n\n"
         
-    if hourly_vars and response.Hourly():
-        hourly = response.Hourly()
-        hourly_data = {"time": pd.date_range(
-            start = pd.to_datetime(hourly.Time(), unit = "s", utc = True),
-            end = pd.to_datetime(hourly.TimeEnd(), unit = "s", utc = True),
-            freq = pd.Timedelta(seconds = hourly.Interval()),
-            inclusive = "left"
-        ).tz_convert("Asia/Manila")}
-        
-        for i, var in enumerate(hourly_vars):
-            hourly_data[var] = hourly.Variables(i).ValuesAsNumpy()
-            
-        hourly_df = pd.DataFrame(data=hourly_data)
-        md_output += "#### Hourly Data\n" + hourly_df.to_markdown(index=False) + "\n\n"
-        
     return md_output
 
-def get_weather_forecast(lat: float, lon: float, daily_vars: list, hourly_vars: list) -> str:
+def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,
         "longitude": lon,
         "daily": daily_vars,
-        "hourly": hourly_vars,
         "timezone": "Asia/Manila"
     }
     
@@ -86,20 +69,5 @@ def get_weather_forecast(lat: float, lon: float, daily_vars: list, hourly_vars: 
             
         daily_df = pd.DataFrame(data=daily_data)
         md_output += "#### Daily Forecast\n" + daily_df.to_markdown(index=False) + "\n\n"
-        
-    if hourly_vars and response.Hourly():
-        hourly = response.Hourly()
-        hourly_data = {"time": pd.date_range(
-            start = pd.to_datetime(hourly.Time(), unit = "s", utc = True),
-            end = pd.to_datetime(hourly.TimeEnd(), unit = "s", utc = True),
-            freq = pd.Timedelta(seconds = hourly.Interval()),
-            inclusive = "left"
-        ).tz_convert("Asia/Manila")}
-        
-        for i, var in enumerate(hourly_vars):
-            hourly_data[var] = hourly.Variables(i).ValuesAsNumpy()
-            
-        hourly_df = pd.DataFrame(data=hourly_data)
-        md_output += "#### Hourly Forecast\n" + hourly_df.to_markdown(index=False) + "\n\n"
         
     return md_output
