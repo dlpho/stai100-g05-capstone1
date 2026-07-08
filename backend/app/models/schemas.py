@@ -6,6 +6,7 @@ class MessageDict(BaseModel):
     role: str
     content: str
 
+
 class UserQuery(BaseModel):
     user_query: str
     history: Optional[List[MessageDict]] = []

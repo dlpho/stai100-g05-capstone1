@@ -92,17 +92,15 @@ graph TD
     Input([Farmer Input Query]):::io
     
     subgraph Pipeline ["LangGraph ReAct Pipeline"]
-        Node1[" 1. Guardrails Node<br/>Checks safety, injections,<br/>and agricultural disclaimers"]:::check
+        Node1["🛡️ 1. Guardrails Node<br/>Checks safety, injections,<br/>and agricultural disclaimers"]:::check
         
-        Node2[" 2. Task Classifier<br/>Routes query intent<br/>(forecast, analytics, chat)"]:::route
+        Node2["🏷️ 2. Task Classifier<br/>Routes query intent<br/>(forecast, analytics, chat)"]:::route
         
-        Node3[" 3. Tool Caller & Slot Extraction<br/>Extracts parameter slots &<br/>disambiguates coordinates"]:::service
+        Node3["🔍 3. Tool Caller<br/>Extracts parameter slots &<br/>resolves location coordinates"]:::service
         
-        subgraph RAG [" RAG Pipeline"]
-            Node4[" 4. Retrieval — Tool Execution<br/>Queries Open-Meteo API &<br/>aggregates data with Pandas"]:::service
-            
-            Node5[" 5. Generation Node<br/>Grounds response in retrieved<br/>telemetry & produces summary"]:::gen
-        end
+        Node4["⚡ 4. Tool Execution<br/>Queries Open-Meteo API &<br/>aggregates data with Pandas"]:::service
+        
+        Node5["✍️ 5. Generation Node<br/>Translates metrics into plain,<br/>factual summaries"]:::gen
     end
     
     Output([Formatted Response]):::io
@@ -121,6 +119,7 @@ graph TD
     Node4 -->|Act: Append ToolMessage Observation| Node3
     
     Node3 -->|Observe: No More Tool Calls / Location Missing| Node5
+
     Node5 --> Output
 ```
 
@@ -150,6 +149,7 @@ The system maintains and updates an interactive conversation state across all no
 * `user_query` (str): Raw input prompt from the user.
 * `intent` (str): Classified task category (`forecast`, `analytics`, `general`, `off-topic`).
 * `messages` (list): Full ordered conversation history passed across all nodes as LangChain `HumanMessage`, `AIMessage`, and `ToolMessage` instances. Enables multi-turn memory across the entire execution graph.
+
 * `tool_calls` (list): Extracted variable lists, dates, and matched location entities.
 * `waiting_for_location` (bool): Toggled to true if the prompt wants weather details but lacks a location keyword.
 * `weather_data_markdown` (str): Tabular Markdown containing weather telemetry and pre-computed stats.
@@ -163,6 +163,7 @@ The system maintains and updates an interactive conversation state across all no
 4. **Slot Resolution**: The `tool_caller` node binds tool configurations and maps user questions to correct Open-Meteo variables. History messages are sequenced after the system instructions so the LLM can reconstruct incomplete multi-turn queries (e.g. combining a previous location-less question with a follow-up location reply).
 5. **API Retrieval & Pre-calculation**: The `tool_execution` node resolves query locations into exact coordinate centroids using the local database, pulls telemetry from Open-Meteo, computes exact statistics using Pandas (e.g. total rain, average temperature) to prevent LLM hallucination, and renders a Markdown table.
 6. **Fact-Grounded Generation**: The `generation` node invokes the LLM with the full message history plus the RAG Markdown table, enabling contextual, memory-aware plain-language summaries grounded in retrieved weather telemetry.
+
 
 ---
 

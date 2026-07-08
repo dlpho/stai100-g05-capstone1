@@ -53,6 +53,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
+
 # --- MAIN INTERFACE ---
 st.title("🥔 WeatherTato: AI Weather Assistant")
 st.markdown("##### What can I help you with?.")
@@ -93,6 +94,7 @@ if st.session_state.pending_prompt:
     new_prompt = st.session_state.pending_prompt
     st.session_state.pending_prompt = None
 
+
 # Chat Input Box
 if chat_prompt := st.chat_input("Ask WeatherTato a question..."):
     new_prompt = chat_prompt
@@ -108,6 +110,7 @@ if new_prompt:
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         error_detail = None
+
         with st.spinner("Analyzing request and fetching weather telemetry..."):
             try:
                 # Send only the last MAX_HISTORY_MESSAGES of history as context (excluding latest user msg)
@@ -133,6 +136,7 @@ if new_prompt:
                 reply = "Sorry, I couldn't process that at the moment. Please try again."
                 raw = e.response.text if hasattr(e, "response") and e.response is not None else str(e)
                 error_detail = raw
+
                 
         message_placeholder.markdown(reply)
         if error_detail:
@@ -141,6 +145,7 @@ if new_prompt:
         st.session_state.messages.append({"role": "assistant", "content": reply})
         # Full history kept in session_state for display — no trimming here.
         # Context is limited at the API call level (see history slice above).
+
         
     # Force streamlit rerun to clear the sample buttons now that messages exist
     st.rerun()
