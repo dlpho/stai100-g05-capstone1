@@ -31,7 +31,7 @@ brgy_final = brgy_final.rename(columns={
 })
 
 # Export
-brgy_final.to_csv("philippines_barangay_coordinates_2023.csv", index=False)
+brgy_final.to_csv("data/philippines_barangay_coordinates_2023.csv", index=False)
 
 
 
@@ -57,7 +57,7 @@ municities_final = municities_final.rename(columns={
 })
 
 # Export
-municities_final.to_csv("philippines_municities_coordinates_2023.csv", index=False)
+municities_final.to_csv("data/philippines_municities_coordinates_2023.csv", index=False)
 
 
 
@@ -82,4 +82,4 @@ provdists_final = provdists_final.rename(columns={
 })
 
 # Export
-provdists_final.to_csv("philippines_provdists_coordinates_2023.csv", index=False)
+provdists_final.to_csv("data/philippines_provdists_coordinates_2023.csv", index=False)

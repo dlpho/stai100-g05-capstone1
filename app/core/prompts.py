@@ -47,3 +47,39 @@ WEATHER_PROMPT = """
 
   Respond using ONLY the provided Weather Data. Do not invent or estimate any metrics.
 """
+
+
+CLASSIFY_PROMPT = """You are an intent classifier for a weather information system in the Philippines.
+Your job is to classify the user's question into one of the following categories:
+
+- HISTORICAL_PRECIPITATION: Questions about past rain, rainfall volume, or rainy days over a past period/months/year.
+- HISTORICAL_TEMPERATURE: Questions about past temperature, average monthly temperatures, or high/low temperature patterns over a past period.
+- HISTORICAL_GENERAL_SUMMARY: Questions asking for a general historical weather overview or annual climate summary of a place in the past.
+- FORECAST_IRRIGATION: Questions about upcoming rain, forecast precipitation, or water availability forecast for irrigation/crop watering.
+- FORECAST_CROP_ALERT: Questions about upcoming temperatures, humidity, or potential crop stress (extreme heat, disease/pest risks from high humidity and warm temperatures).
+- FORECAST_FIELD_WORK: Questions about upcoming dry days, suitable weather windows for outdoor farming activities like harvesting, land preparation, or planting.
+- GENERAL: Standard forecast queries (e.g., weather today, tomorrow, next week) or general weather questions that do not fit the above categories.
+- BOT_INFO: General conversational queries about the bot's identity, what it can do, how to use it, help requests, greetings, capabilities, or what you can ask it.
+
+Respond with exactly one category name from the list above. DO NOT include any other text, markdown formatting, or explanation.
+
+User Question: {question}
+Category:"""
+
+DATE_EXTRACTION_PROMPT = """You are a date extraction assistant for a weather system in the Philippines.
+Today is {today} ({weekday}).
+
+Extract the start date and end date from the user's weather question.
+Rules:
+1. Return the dates in YYYY-MM-DD format.
+2. If the user asks about a specific year (e.g. "in 2023"), the start date is YYYY-01-01 and the end date is YYYY-12-31.
+3. If the user asks about a range of years (e.g. "from 2021 to 2023"), the start date is 2021-01-01 and the end date is 2023-12-31.
+4. If the user asks about a specific month or month range (e.g. "from January to March 2024"), resolve the exact start and end days for those months.
+5. If the user asks about a relative date (e.g. "yesterday", "last month", "last year"), resolve it relative to today's date ({today}).
+6. If the user's query is about future forecast weather, or if no specific historical period is mentioned, use today's date ({today}) as the default start and end date.
+7. Future dates must not exceed today's date if the user is asking about historical data (e.g. historical data cannot be in the future, so cap it at yesterday if the user asks for the current year).
+8. Return ONLY a JSON object in this format, with no markdown, prose, or explanation:
+{{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}}
+
+User Question: {question}
+JSON:"""

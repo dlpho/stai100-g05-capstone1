@@ -1,7 +1,9 @@
 import re
 import json
-from prompts import SYSTEM_PROMPT, WEATHER_PROMPT
+from core.prompts import SYSTEM_PROMPT, WEATHER_PROMPT
 from tools.location_search import search_location
+from core.rag_handler import WeatherRAGHandler
+
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 PHONE_REGEX = r"(\+?\d[\d -]{8,}\d)"
 CREDIT_CARD_REGEX = r"\b(?:\d[ -]*?){13,16}\b"
@@ -110,10 +112,98 @@ def _prompt_distinguishes(prompt: str, picked: str, candidates: list[dict]) -> b
 class WeatherAgent:
   def __init__(self, llm):
     self.llm = llm
+    self.rag = WeatherRAGHandler(llm)
 
   def build_prompt(self, question: str, location: str, weather_data: str) -> str:
+    import datetime
+    today = datetime.date.today().strftime("%A, %Y-%m-%d")
+    date_context = f"Current Date (Today): {today}\n\n"
     formatted_user_prompt = WEATHER_PROMPT.format(question=question, location=location, weather_data=weather_data)
-    return SYSTEM_PROMPT + "\n\n" + formatted_user_prompt
+    return SYSTEM_PROMPT + "\n\n" + date_context + formatted_user_prompt
+
+  def process_query(self, question: str, session_id: str = "default", selected_location: dict = None) -> dict:
+    """
+    Orchestrate the weather query processing:
+    1. Guardrail validation checks.
+    2. Intent classification.
+    3. BOT_INFO path handling (bypasses location and weather data lookup).
+    4. Location resolution (via prompt search or selected candidate).
+    5. RAG compilation and Pandas aggregation.
+    6. Execution of target prompt templates.
+    """
+    if not question.strip():
+      return {"answer": "Please enter a weather-related question."}
+
+    clean_question = remove_pii(question)
+
+    if detect_prompt_injection(clean_question):
+      return {"answer": "Request blocked. Please ask a weather-related question."}
+
+    # Run intent classification first to check if this is a general/greetings query
+    category = self.rag.classify_intent(clean_question)
+
+    if category == "BOT_INFO":
+      # Skip weather keyword check, skip location resolution, run directly on LLM
+      prompt = SYSTEM_PROMPT + "\n\n" + clean_question
+      
+      try:
+        llm_output_msg = self.llm.invoke(prompt)
+        final_answer = llm_output_msg.content if hasattr(llm_output_msg, "content") else str(llm_output_msg)
+      except Exception as e:
+        final_answer = "An error occurred while communicating with the model engine."
+        
+      final_answer = validate_output(final_answer)
+      
+      return {
+          "answer": final_answer,
+          "location": None
+      }
+
+    if not is_weather_related(clean_question):
+      return {"answer": "I can only answer questions related to weather conditions and forecasts."}
+
+    if requests_farming_advice(clean_question):
+      return {"answer": "I am a weather assistant and cannot provide farming, planting, or crop management advice. Please consult an agricultural expert."}
+
+    # Resolve location coordinates
+    location_dict = None
+    if selected_location:
+      location_dict = selected_location
+    else:
+      extracted = self.prompt_to_location(clean_question)
+      if extracted:
+        if "candidates" in extracted:
+          # Location search matched multiple entries
+          return {
+              "status": "ambiguous",
+              "candidates": extracted["candidates"]
+          }
+        elif "latitude" in extracted and "longitude" in extracted:
+          location_dict = extracted
+
+    if not location_dict:
+      return {
+          "answer": "To provide weather information, please specify a location in the Philippines (e.g., 'What is the weather in Bacarra, Ilocos Norte?')."
+      }
+
+    latitude = float(location_dict["latitude"])
+    longitude = float(location_dict["longitude"])
+    location_display = self.location_to_display_string(location_dict)
+
+    # Perform RAG API retrieval & Pandas aggregation
+    try:
+      weather_data = self.rag.retrieve_and_aggregate(clean_question, latitude, longitude, category)
+    except Exception as e:
+      return {"answer": f"Error compiling weather data: {str(e)}"}
+
+    # Run the core agent loop directly on the clean question
+    final_answer = self.run(clean_question, location_display, weather_data)
+
+    return {
+        "answer": final_answer,
+        "location": location_display
+    }
+
 
   def run(self, question: str, location: str, weather_data: str) -> str:
     if not question.strip():
@@ -121,19 +211,24 @@ class WeatherAgent:
 
     question = remove_pii(question)
 
-    if detect_prompt_injection(question):
-      return "Request blocked. Please ask a standard weather-related question."
+    current_question = question
+    if "Current Question:" in question:
+      current_question = question.split("Current Question:")[-1].strip()
 
-    if not is_weather_related(question):
+    if detect_prompt_injection(current_question):
+      return "Request blocked. Please ask a weather-related question."
+
+    if not is_weather_related(current_question):
       return "I can only answer questions related to weather conditions and forecasts."
 
-    if requests_farming_advice(question):
+    if requests_farming_advice(current_question):
       return "I am a weather assistant and cannot provide farming, planting, or crop management advice. Please consult an agricultural expert."
 
     prompt = self.build_prompt(question, location, weather_data)
 
     try:
-      llm_output = self.llm.invoke(prompt)
+      llm_output_msg = self.llm.invoke(prompt)
+      llm_output = llm_output_msg.content if hasattr(llm_output_msg, "content") else str(llm_output_msg)
     except Exception as e:
       return "An error occurred while communicating with the model engine."
 
@@ -168,7 +263,8 @@ class WeatherAgent:
 
     try:
       response = self.llm.invoke(location_prompt)
-      raw_json = self._extract_json(response)
+      response_text = response.content if hasattr(response, "content") else str(response)
+      raw_json = self._extract_json(response_text)
       if raw_json:
         result = json.loads(raw_json)
         result = {k: v for k, v in result.items() if v and isinstance(v, str)}
