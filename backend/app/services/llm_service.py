@@ -2,7 +2,6 @@ from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from app.models.schemas import AgentState, LocationEntity
 from app.core.guardrails import detect_prompt_injection, remove_pii, is_weather_related, requests_farming_advice
-from app.core.config import settings
 from app.services.meteo_service import get_weather_analytics, get_weather_forecast
 from app.services.location_search import search_location
 from typing import Dict, Any
@@ -10,12 +9,18 @@ import json
 import re
 import datetime
 
+from app.core.env import (
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_MODEL,
+    DEEPSEEK_BASE_URL,
+)
+
 # Initialize LLM
 llm = ChatOpenAI(
-    model=settings.DEEPSEEK_MODEL,
-    api_key=settings.DEEPSEEK_API_KEY,
-    base_url=settings.DEEPSEEK_BASE_URL,
-    temperature=0
+    model=DEEPSEEK_MODEL,
+    api_key=DEEPSEEK_API_KEY,
+    base_url=DEEPSEEK_BASE_URL,
+    temperature=0,
 )
 
 # Prompts

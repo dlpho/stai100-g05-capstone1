@@ -3,6 +3,8 @@ import requests
 import json
 import os
 
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:7860")
+
 st.set_page_config(page_title="WeatherTato for Farmers", page_icon="🌦️", layout="wide")
 
 st.title("🥔 WeatherTato: The Weather AI Assistant")
@@ -31,7 +33,7 @@ if prompt := st.chat_input("Ask a weather question..."):
         with st.spinner("Fetching data and analyzing..."):
             try:
                 response = requests.post(
-                    f"{os.getenv('BACKEND_URL', "http://localhost:7860")}/api/chat",
+                    f"{BACKEND_URL}/api/chat",
                     json={"user_query": prompt},
                     timeout=30
                 )
