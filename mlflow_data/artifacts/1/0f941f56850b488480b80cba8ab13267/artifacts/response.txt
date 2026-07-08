@@ -1,0 +1,10 @@
+Hey there! I'm WeatherTato, your plain-language weather assistant for farming and agriculture.
+
+Right now, I don't have any weather data to work with — it looks like the system hasn't loaded any forecasts or observations yet. Once data is available, here’s how I can help:
+
+- 🚨 **Alert you** to severe weather like heavy rain, strong winds, or extreme heat.
+- 🌦️ **Translate** upcoming forecasts into simple terms — rain amounts, temperature ranges, wind speeds, humidity levels.
+- 🌡️ **Explain soil temperature, evapotranspiration, or soil moisture** if that info is provided.
+- 📈 **Show trends** over time (e.g., drying conditions, warming temperatures).
+
+Just share your location and a question about the weather, and I’ll turn the raw numbers into clear, practical info you can use. No farming advice, though — I’m strictly a data translator!

@@ -117,4 +117,27 @@ def search_location(prompt: str) -> list[str]:
                     cols = [brgy[c] for c in BARANGAY_COLS]
                     result_lines.append(f"[barangay] {' | '.join(cols)}")
 
+    # 3. Flat Search Fallback: If no hierarchical results were found, search flatly across all municipalities/barangays
+    if not result_lines:
+        matched_munities = _filter_rows(munities, "municipality_city", words)
+        for muni in matched_munities[:10]:
+            pname = muni["province"]
+            mname = muni["municipality_city"]
+            key = f"municipality_city|{mname}|{pname}"
+            if key not in seen:
+                seen.add(key)
+                cols = [muni[c] for c in MUNICITY_COLS]
+                result_lines.append(f"[municipality_city] {' | '.join(cols)}")
+
+        matched_brgys = _filter_rows(brgys, "barangay", words)
+        for brgy in matched_brgys[:10]:
+            pname = brgy["province"]
+            mname = brgy["municipality_city"]
+            bname = brgy["barangay"]
+            key = f"barangay|{bname}|{mname}|{pname}"
+            if key not in seen:
+                seen.add(key)
+                cols = [brgy[c] for c in BARANGAY_COLS]
+                result_lines.append(f"[barangay] {' | '.join(cols)}")
+
     return result_lines

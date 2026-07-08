@@ -1,0 +1,40 @@
+Sure! Here's the forecast for **Davao City** for **next week (Monday, July 13 to Sunday, July 19, 2026)**:
+
+---
+
+**⚠️ ALERT** — High humidity is expected every day, with **max levels reaching 100%** on most afternoons. This can mean very muggy conditions and possible fog or mist in the mornings.
+
+**Monday, July 13**
+- **Wind:** Calm (7 km/h)
+- **Humidity:** Very High — average 85%, max near 99%
+
+**Tuesday, July 14**
+- **Wind:** Calm (6 km/h)
+- **Humidity:** Very High — average 93%, max 100%
+
+**Wednesday, July 15**
+- **Wind:** Calm (4 km/h)
+- **Humidity:** Very High — average 89%, max 100%
+
+**Thursday, July 16**
+- **Wind:** Calm (4 km/h)
+- **Humidity:** Very High — average 86%, max 100%
+
+**Friday, July 17**
+- **Wind:** Calm (7 km/h)
+- **Humidity:** Very High — average 88%, max near 99%
+
+**Saturday, July 18**
+- **Wind:** Breezy (12 km/h)
+- **Humidity:** Very High — average 95%, max 100%
+
+**Sunday, July 19**
+- **Wind:** Calm (9 km/h)
+- **Humidity:** Very High — average 88%, max 100%
+
+---
+
+**📈 TRENDS & CORRELATIONS**  
+- **Wind** stays mostly calm throughout the week (under 10 km/h), except Saturday when it picks up slightly to breezy (12 km/h).  
+- **Humidity** remains consistently in the "very high" range (>85%) all week — the highest average is on Saturday (95%), and the lowest is Monday (85%).  
+- The week is shaping up to be **still and muggy**, typical of the rainy season in Davao.
