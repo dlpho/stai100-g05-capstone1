@@ -7,12 +7,12 @@ NAME_REGEX = r"(?i)\b(?:my\s+name\s+is|i\s+am\s+named|i'm\s+named|this\s+is)\s+(
 
 INJECTION_PATTERNS = [
     "ignore previous", "system prompt", "act as", "jailbreak", "bypass", "override",
-    "disregard", "forget all", "forget previous", "new instructions", "you are now", 
-    "do not follow", "developer mode", "dan", "hypothetical", "pretend", "roleplay", 
+    "disregard", "forget all", "forget previous", "new instructions", "you are now",
+    "do not follow", "developer mode", "dan", "hypothetical", "pretend", "roleplay",
     "base prompt", "core instructions", "unrestricted", "rule", "forbidden"
 ]
 WEATHER_KEYWORDS = [
-    "weather", "forecast", "temperature", "rain", "humidity", "wind", "storm", "typhoon", 
+    "weather", "forecast", "temperature", "rain", "humidity", "wind", "storm", "typhoon",
     "heat", "climate", "uv", "visibility", "pressure", "el nino", "la nina",
     "precipitation", "sunshine", "evapotranspiration", "soil moisture", "soil temperature",
     "vapour pressure", "wind speed", "wind direction", "wind gust", "cold", "hot", "warm",

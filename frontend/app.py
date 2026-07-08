@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import json
+import os
 
 st.set_page_config(page_title="WeatherTato for Farmers", page_icon="🌦️", layout="wide")
 
@@ -26,20 +27,20 @@ if prompt := st.chat_input("Ask a weather question..."):
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        
+
         with st.spinner("Fetching data and analyzing..."):
             try:
                 response = requests.post(
-                    "http://localhost:7860/api/chat",
+                    f"{os.getenv('BACKEND_URL', "http://localhost:7860")}/api/chat",
                     json={"user_query": prompt},
                     timeout=30
                 )
                 response.raise_for_status()
                 data = response.json()
                 reply = data.get("response", "No response generated.")
-                
+
             except requests.exceptions.RequestException as e:
                 reply = f"Error communicating with backend: {e}"
-                
+
         message_placeholder.markdown(reply)
         st.session_state.messages.append({"role": "assistant", "content": reply})
