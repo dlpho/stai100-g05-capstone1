@@ -2,9 +2,9 @@ import streamlit as st
 import requests
 import json
 
-st.set_page_config(page_title="WeatherAI for Farmers", page_icon="🌦️", layout="wide")
+st.set_page_config(page_title="WeatherTato for Farmers", page_icon="🌦️", layout="wide")
 
-st.title("🌦️ WeatherAI: Philippine Weather Assistant")
+st.title("🥔 WeatherTato: The Weather AI Assistant")
 st.markdown("A localized conversational weather assistant tailored for farmers, agricultural workers, and delivery riders.")
 
 st.sidebar.header("Example Queries")

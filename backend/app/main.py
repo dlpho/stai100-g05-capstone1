@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 import uvicorn
-from backend.app.api.routes import router
+from app.api.routes import router
 
-app = FastAPI(title="WeatherAI Backend", version="1.0.0")
+app = FastAPI(title="WeatherTato Backend", version="1.0.0")
 
 app.include_router(router, prefix="/api")
 

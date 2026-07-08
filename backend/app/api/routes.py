@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 import mlflow
-from backend.app.models.schemas import UserQuery
-from backend.app.services.llm_service import compiled_graph
+from app.models.schemas import UserQuery
+from app.services.llm_service import compiled_graph
 
 router = APIRouter()
 

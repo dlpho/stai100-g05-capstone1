@@ -1,10 +1,10 @@
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
-from backend.app.models.schemas import AgentState, LocationEntity
-from backend.app.core.guardrails import detect_prompt_injection, remove_pii, is_weather_related, requests_farming_advice
-from backend.app.core.config import settings
-from backend.app.services.meteo_service import get_weather_analytics, get_weather_forecast
-from backend.app.services.location_search import search_location
+from app.models.schemas import AgentState, LocationEntity
+from app.core.guardrails import detect_prompt_injection, remove_pii, is_weather_related, requests_farming_advice
+from app.core.config import settings
+from app.services.meteo_service import get_weather_analytics, get_weather_forecast
+from app.services.location_search import search_location
 from typing import Dict, Any
 import json
 import re
@@ -59,7 +59,7 @@ Return a JSON object:
 User Query: {query}
 """
 
-GENERATION_PROMPT = """You are WeatherAI, a reliable localized weather assistant for agricultural workers and farmers who benefit from info of weather.
+GENERATION_PROMPT = """You are WeatherTato (A Weather AI Agent), a reliable localized weather assistant for agricultural workers and farmers who benefit from info of weather.
 Translate API data into plain, simple, and accessible language.
 
 RULES & STRICT LIMITATIONS:
@@ -73,6 +73,11 @@ RULES & STRICT LIMITATIONS:
 OUTPUT PROTOCOL:
 FORMAT D: GENERAL
 - Provide a direct, concise answer in 1-3 sentences.
+
+CONVERSATIONAL STYLE:
+- Avoid robotic, templated structures (e.g. "The high will be Warm (27.95°C)").
+- Instead, write in a natural, friendly, and conversational tone, blending the plain language category and the parenthesized value smoothly.
+- Example: "Next Monday in Manila, you can expect warm temperatures peaking at 27.95°C and cooling to 25.4°C, accompanied by calm winds (16.9 km/h)."
 
 PLAIN LANGUAGE INTERPRETATION (STRICTLY REQUIRED):
 Describe measurements in plain words first, followed by the raw number in parentheses.

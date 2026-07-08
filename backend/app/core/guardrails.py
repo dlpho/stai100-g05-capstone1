@@ -5,8 +5,12 @@ PHONE_REGEX = r"(\+?\d[\d -]{8,}\d)"
 CREDIT_CARD_REGEX = r"\b(?:\d[ -]*?){13,16}\b"
 NAME_REGEX = r"(?i)\b(?:my\s+name\s+is|i\s+am\s+named|i'm\s+named|this\s+is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b"
 
-INJECTION_PATTERNS = ["ignore previous", "system prompt", "act as", "jailbreak", "bypass", "override"]
-
+INJECTION_PATTERNS = [
+    "ignore previous", "system prompt", "act as", "jailbreak", "bypass", "override",
+    "disregard", "forget all", "forget previous", "new instructions", "you are now", 
+    "do not follow", "developer mode", "dan", "hypothetical", "pretend", "roleplay", 
+    "base prompt", "core instructions", "unrestricted", "rule", "forbidden"
+]
 WEATHER_KEYWORDS = [
     "weather", "forecast", "temperature", "rain", "humidity", "wind", "storm", "typhoon", 
     "heat", "climate", "uv", "visibility", "pressure", "el nino", "la nina",

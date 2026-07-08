@@ -5,21 +5,23 @@ import os
 import signal
 
 def main():
-    print("Starting WeatherAI Backend (FastAPI)...")
+    print("Starting WeatherTato Backend (FastAPI)...")
     
-    # We need to set PYTHONPATH so that backend.app can be imported
+    # We need to set PYTHONPATH so that "app" package can be imported directly
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.path.abspath(os.path.dirname(__file__))
+    workspace_dir = os.path.abspath(os.path.dirname(__file__))
+    backend_dir = os.path.join(workspace_dir, "backend")
+    env["PYTHONPATH"] = backend_dir + os.pathsep + env.get("PYTHONPATH", "")
     
     backend_process = subprocess.Popen(
-        [sys.executable, "backend/app/main.py"],
+        [sys.executable, "-m", "app.main"],
         env=env
     )
     
     # Wait for backend to start up
     time.sleep(3)
     
-    print("Starting WeatherAI Frontend (Streamlit)...")
+    print("Starting WeatherTato Frontend (Streamlit)...")
     frontend_process = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", "frontend/app.py", "--server.port", "8000"]
     )

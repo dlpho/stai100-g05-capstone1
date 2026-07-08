@@ -1,6 +1,6 @@
-# 🌦️ WeatherAI: Philippine Weather AI Assistant
+# 🥔 WeatherTato: The Weather AI Assistant
 
-WeatherAI is a localized conversational weather assistant tailored for farmers and agricultural workers in the Philippines. It operates under strict guardrail safety guidelines to translate weather data into objective facts for farmers to use
+WeatherTato is a localized conversational weather assistant tailored for farmers and agricultural workers in the Philippines. It operates under strict guardrail safety guidelines to translate weather data into objective facts for farmers to use
 
 ---
 
