@@ -35,7 +35,7 @@ if prompt := st.chat_input("Ask a weather question..."):
                 response = requests.post(
                     f"{BACKEND_URL}/api/chat",
                     json={"user_query": prompt},
-                    timeout=30
+                    timeout=60
                 )
                 response.raise_for_status()
                 data = response.json()
