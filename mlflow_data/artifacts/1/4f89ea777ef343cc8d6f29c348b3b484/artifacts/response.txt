@@ -1,0 +1,20 @@
+Sure! Since "next week" can sometimes mean different date ranges, I’ll break it down clearly.
+
+Based on the data, the forecast starts on **July 9, 2026 (today)**. There are two common ways to interpret "next week":
+
+### Option 1: The following Monday–Sunday (July 13–19)
+Total precipitation: **105.0 mm**
+- Light rain (10.2 mm) on July 15
+- Moderate rain (14.1 mm) on July 14
+- Moderate rain (26.4 mm) on July 13 — notably the highest single-day total
+
+### Option 2: The next 7 days starting today (July 9–15)
+Total precipitation: **143.8 mm**
+- **⚠️ ALERT:** Heavy rain (54.8 mm) is expected on **July 12** — this is the heaviest single day in the entire 2-week outlook.
+
+---
+
+**📈 TRENDS & CORRELATIONS:**  
+Rain totals gradually increase from light (6.2 mm) on July 9 to a sharp peak of very heavy (54.8 mm) on July 12, then decrease back to moderate levels by mid-week. This suggests a short but intense wet period in the middle.
+
+Would you like me to clarify which range you meant, or check another variable like wind or soil moisture?

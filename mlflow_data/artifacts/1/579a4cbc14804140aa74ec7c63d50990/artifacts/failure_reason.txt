@@ -1,0 +1,1 @@
+Response did not reference telemetry numbers from the context table; Response lacked plain-language interpretations (e.g., Warm, Heavy, Breezy)

@@ -19,7 +19,11 @@ WEATHER_KEYWORDS = [
     "cool", "drizzle", "shower", "dry", "wet"
 ]
 
-FARMING_ADVICE_KEYWORDS = ["what to plant", "when to plant", "fertilizer", "pesticide", "harvesting schedule", "crop yield"]
+FARMING_ADVICE_KEYWORDS = [
+    "what to plant", "when to plant", "should i plant", "plant corn", 
+    "crop recommendation", "fertilizer", "pesticide", "harvesting schedule", 
+    "crop yield", "farming advice", "plant "
+]
 
 def remove_pii(text: str) -> str:
     text = re.sub(EMAIL_REGEX, "[REDACTED]", text)

@@ -221,4 +221,4 @@ __marimo__/
 .cache.sqlite
 mlflow.db
 mlruns/
-
+.venv*
