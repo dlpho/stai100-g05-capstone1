@@ -1,19 +1,21 @@
-from langgraph.graph import StateGraph, START, END
-from langchain_openai import ChatOpenAI
-from models.schemas import AgentState, LocationEntity
-from core.guardrails import detect_prompt_injection, remove_pii, is_weather_related, requests_farming_advice
-from services.meteo_service import get_weather_analytics, get_weather_forecast
-from services.location_search import search_location
-from typing import Dict, Any
+"""
+WeatherTato — LangGraph ReAct Agent Orchestration
+"""
+import datetime
 import json
 import re
-import datetime
+from typing import Dict, Any
 
-from core.env import (
-    DEEPSEEK_API_KEY,
-    DEEPSEEK_MODEL,
-    DEEPSEEK_BASE_URL,
-)
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
+
+from models.schemas import AgentState, LocationEntity
+from core.guardrails import detect_prompt_injection, remove_pii, requests_farming_advice, is_weather_related
+from services.meteo_service import get_weather_analytics, get_weather_forecast
+from services.location_search import search_location
+from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
 
 # Initialize LLM
 llm = ChatOpenAI(
@@ -23,86 +25,13 @@ llm = ChatOpenAI(
     temperature=0,
 )
 
-# Prompts
-INTENT_PROMPT = """Classify the user's intent into ONE of the following categories:
-- `analytics`: Wants historical weather data (past dates).
-- `forecast`: Wants future weather predictions (future dates).
-- `general`: Asking general questions about what you can do.
-- `off-topic`: Anything else.
 
-Return ONLY the category name.
-User Query: {query}"""
+# ---------------------------------------------------------------------------
+# MODULE 6: GUARDRAILS NODE
+# ---------------------------------------------------------------------------
 
-SLOT_PROMPT = """You are a slot extraction assistant for a weather information system in the Philippines.
-Today's Date: {today} ({weekday}).
-
-The user's intent is: {intent}
-
-Extract the following information from the weather query:
-- location: Try to identify the specific location mentioned.
-- start_date: Format as YYYY-MM-DD if present.
-- end_date: Format as YYYY-MM-DD if present.
-- daily_vars: List of valid daily variables requested (e.g., ["temperature_2m_max", "precipitation_sum"]). If vague, default to ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"].
-
-Date Resolution Rules (for start_date and end_date):
-1. Convert all time periods to exact YYYY-MM-DD formats.
-2. If the user asks about a specific year (e.g. 'in 2023'), start_date is YYYY-01-01 and end_date is YYYY-12-31.
-3. If the user asks about a range of years (e.g. 'from 2021 to 2023'), start_date is 2021-01-01 and end_date is 2023-12-31.
-4. If the user asks about a specific month or month range (e.g. 'from Jan to March 2024'), resolve the exact start and end days for those months.
-5. Resolve relative dates ('yesterday', 'last month', 'last year') relative to today's date ({today}).
-6. If the query is about historical weather, start_date and end_date cannot exceed today's date ({today}). Cap historical dates at yesterday.
-7. If no specific dates are mentioned and it is a forecast, default to {today}.
-
-Return a JSON object:
-{{
-  "location": "location string or empty",
-  "start_date": "YYYY-MM-DD or empty",
-  "end_date": "YYYY-MM-DD or empty",
-  "daily_vars": [],
-}}
-
-User Query: {query}
-"""
-
-GENERATION_PROMPT = """You are WeatherTato (A Weather AI Agent), a reliable localized weather assistant for agricultural workers and farmers who benefit from info of weather.
-Translate API data into plain, simple, and accessible language.
-
-RULES & STRICT LIMITATIONS:
-1. Be concise. Use simple language. No technical jargon.
-2. Put severe weather warnings (typhoons, extreme heat) at the very top.
-3. Base answers ONLY on provided data. If data is missing or incomplete, state it clearly. NEVER invent or guess data.
-4. YOU ARE A DATA TRANSLATOR, NOT A CONSULTANT. 
-- NEVER give farming advice, recommend crops, or tell users when to plant/irrigate.
-- Example of acceptable response: "Heavy rainfall (50mm) is expected tomorrow. Please factor this into your operations."
-
-OUTPUT PROTOCOL:
-FORMAT D: GENERAL
-- Provide a direct, concise answer in 1-3 sentences.
-
-CONVERSATIONAL STYLE:
-- Avoid robotic, templated structures (e.g. "The high will be Warm (27.95°C)").
-- Instead, write in a natural, friendly, and conversational tone, blending the plain language category and the parenthesized value smoothly.
-- Example: "Next Monday in Manila, you can expect warm temperatures peaking at 27.95°C and cooling to 25.4°C, accompanied by calm winds (16.9 km/h)."
-
-PLAIN LANGUAGE INTERPRETATION (STRICTLY REQUIRED):
-Describe measurements in plain words first, followed by the raw number in parentheses.
-- Rain: None (0mm) -> Light (1-10mm) -> Moderate (11-30mm) -> Heavy (31-60mm) -> Very Heavy (>60mm)
-- Temp: Cool (<20°C) -> Warm (20-29°C) -> Hot (30-35°C) -> Very Hot (>35°C)
-- Wind: Calm (0-20km/h) -> Breezy (21-40km/h) -> Windy (41-60km/h) -> Strong (>60km/h)
-- Humidity: Low (<50%) -> Comfortable (50-70%) -> High (71-85%) -> Very High (>85%)
-
-Examples:
-- "Heavy (45mm)" NOT "45mm"
-- "Very Hot (37.2°C)" NOT "37.2°C"
-
-User Query: {query}
-
-Weather Data Context:
-{weather_data}
-"""
-
-# Nodes
-def node_guardrails(state: AgentState):
+def node_guardrails(state: AgentState) -> dict:
+    """Node 1 — Safety guardrails applied to every incoming query."""
     query = state.user_query
     clean_query = remove_pii(query)
     
@@ -110,8 +39,6 @@ def node_guardrails(state: AgentState):
         return {"error": "Request blocked due to policy violation.", "user_query": clean_query}
         
     if not is_weather_related(clean_query) and not requests_farming_advice(clean_query):
-        # Allow classification to handle non-weather general queries if needed, but the requirements say block
-        # Actually, let the classifier route to off-topic
         pass
         
     if requests_farming_advice(clean_query):
@@ -119,171 +46,347 @@ def node_guardrails(state: AgentState):
         
     return {"user_query": clean_query}
 
-def node_classifier(state: AgentState):
+
+# ---------------------------------------------------------------------------
+# MODULE 1: PROMPT ENGINEERING (Few-Shot Classifier System Prompt)
+# MODULE 2: STRUCTURED OUTPUTS (Intent Classifier JSON)
+# ---------------------------------------------------------------------------
+
+WEATHER_INTENTS = {
+    "analytics": "User wants historical weather data for past dates (e.g., 'What was the weather like in Cebu last year?', 'Give me the temperature on 2025-05-10')",
+    "forecast":  "User wants future weather predictions or forecasts (e.g., 'What is the forecast for Manila tomorrow?', 'Will it rain next week?')",
+    "general":   "User is asking general questions about what the assistant can do (e.g., 'What can you help me with?', 'How do I use this system?')",
+    "off-topic": "Anything unrelated to weather or the assistant (e.g., 'Who won the World Cup?', 'Write a python script')",
+}
+
+_intents_str = "\n".join([f"- {k}: {v}" for k, v in WEATHER_INTENTS.items()])
+
+INTENT_SYSTEM_PROMPT = (
+    "You are an intent classifier for a weather information assistant.\n\n"
+    "Classify the user's message into EXACTLY ONE of these intents:\n"
+    f"{_intents_str}\n\n"
+    "Respond with ONLY a JSON object in this exact format:\n"
+    '{"intent": "INTENT_NAME", "confidence": 0.95, "reasoning": "brief reason"}\n\n'
+    "Rules:\n"
+    "- intent must be one of the intent names above\n"
+    "- confidence is a float between 0 and 1\n"
+    "- choose the most likely intent if the message could fit multiple"
+)
+
+FEW_SHOT_EXAMPLES = [
+    {"role": "user",      "content": "What is the forecast for Manila City tomorrow?"},
+    {"role": "assistant", "content": '{"intent": "forecast", "confidence": 0.98, "reasoning": "User explicitly wants a future weather forecast"}'},
+    {"role": "user",      "content": "Give me the temperature in Cebu on 2025-05-10."},
+    {"role": "assistant", "content": '{"intent": "analytics", "confidence": 0.96, "reasoning": "User is asking for weather data on a specific historical date"}'},
+    {"role": "user",      "content": "What can you help me with?"},
+    {"role": "assistant", "content": '{"intent": "general", "confidence": 0.97, "reasoning": "User is asking about the assistant\'s capabilities"}'},
+    {"role": "user",      "content": "Who won the World Cup in 2022?"},
+    {"role": "assistant", "content": '{"intent": "off-topic", "confidence": 0.95, "reasoning": "User asking a general question unrelated to weather"}'},
+]
+
+
+def node_classifier(state: AgentState) -> dict:
+    """Node 2 — Few-shot intent classifier."""
     if state.error:
         return state
-        
-    prompt = INTENT_PROMPT.format(query=state.user_query)
-    response = llm.invoke(prompt)
-    intent = response.content.strip().lower()
-    
-    # Ensure it's one of the expected intents
-    if intent not in ["analytics", "forecast", "general", "off-topic"]:
-        intent = "general"
-        
-    return {"intent": intent}
 
-def node_slot_extraction(state: AgentState):
-    if state.error or state.intent not in ["analytics", "forecast"]:
-        return state
-        
-    today_dt = datetime.datetime.now()
-    today_str = today_dt.strftime("%Y-%m-%d")
-    weekday_str = today_dt.strftime("%A")
-    
-    slot_defs = (
-        "- location: Try to identify the specific location mentioned.\n"
-        "- start_date: Exact start date in YYYY-MM-DD.\n"
-        "- end_date: Exact end date in YYYY-MM-DD.\n"
-        '- daily_vars: List of valid daily variables requested. If vague, default to ["temperature_2m_max", "temperature_2m_min", "precipitation_sum"].\n\n'
-        "Allowed Daily Variables: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean"
-    )
-        
-    prompt = SLOT_PROMPT.format(
-        today=today_str,
-        weekday=weekday_str,
-        intent=state.intent,
-        slot_definitions=slot_defs,
-        query=state.user_query
-    )
-    response = llm.invoke(prompt)
+    # Build prompt from system instructions + few-shot examples
+    intent_prompt = INTENT_SYSTEM_PROMPT + "\n\n### Examples:\n"
+    for ex in FEW_SHOT_EXAMPLES:
+        role = "User" if ex["role"] == "user" else "Assistant"
+        intent_prompt += f"{role}: {ex['content']}\n"
+
+    # Inject conversation history so follow-up messages are classified in context
+    if state.messages:
+        intent_prompt += "\n### Conversation History:\n"
+        for msg in state.messages:
+            if isinstance(msg, SystemMessage):
+                continue
+            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+            intent_prompt += f"{role}: {msg.content}\n"
+
+    intent_prompt += f"\nUser: {state.user_query}\nAssistant: "
+
+    response = llm.invoke(intent_prompt)
     try:
-        # Simple extraction of JSON from response
         text = response.content
         md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
         if md_match:
             text = md_match.group(1).strip()
         data = json.loads(text)
-        print("LLM JSON Result:", json.dumps(data, indent=2))
-        
-        location_str = data.get("location", "")
-        start_date = data.get("start_date", "")
-        end_date = data.get("end_date", "")
-        daily_vars = data.get("daily_vars", ["temperature_2m_max", "precipitation_sum"])
-        
-        if not location_str:
-            return {"waiting_for_location": True}
-            
-        # Parse location string to lat/long using location_search
-        ref_lines = search_location(location_str)
-        if ref_lines:
-            first_match = ref_lines[0]
-            # parse `[level] name | parent | ... | lat | long`
-            parts = [p.strip() for p in first_match.split("|")]
-            if len(parts) >= 6:
-                lat = parts[-2]
-                lon = parts[-1]
-                loc_entity = LocationEntity(latitude=lat, longitude=lon, barangay=location_str)
-            else:
-                lat = "14.5995"
-                lon = "120.9842"
-                loc_entity = LocationEntity(latitude=lat, longitude=lon, barangay=location_str)
-        else:
-            # Fallback coordinates if location search fails but location was provided
-            loc_entity = LocationEntity(latitude="14.5995", longitude="120.9842", barangay=location_str)
-            
-        # Temporarily store vars in state (adding them via returned dict, but they need to be on the model)
-        # We can pass them through start_date/end_date for simplicity or extend the model
-        return {
-            "location": loc_entity,
-            "start_date": start_date,
-            "end_date": end_date,
-            "daily_vars": daily_vars, # Will need to add these to State schema if needed, but for now we'll process here
-            # Hack for state passage:
-            "error": json.dumps({"daily": daily_vars}) if not state.error else state.error
-        }
+        intent = data.get("intent", "").lower()
+        print("Classifier LLM JSON Result:", json.dumps(data, indent=2))
     except Exception as e:
-        return {"error": f"Failed to extract parameters: {e}"}
+        print(f"Failed to parse classifier intent JSON: {e}. Fallback to string search.")
+        intent = "general"
+        text_lower = response.content.lower()
+        for key in WEATHER_INTENTS.keys():
+            if key in text_lower:
+                intent = key
+                break
 
-def node_tool_execution(state: AgentState):
+    if intent not in ["analytics", "forecast", "general", "off-topic"]:
+        intent = "general"
+
+    return {"intent": intent}
+
+
+# ---------------------------------------------------------------------------
+# MODULE: TOOL USE — Geocoding & Weather Tools
+# ---------------------------------------------------------------------------
+
+def _resolve_location(location_str: str) -> LocationEntity | None:
+    """Resolve a free-text location string to lat/lon via the offline PSGC geocoder."""
+    if not location_str:
+        return None
+    ref_lines = search_location(location_str)
+    if ref_lines:
+        parts = [p.strip() for p in ref_lines[0].split("|")]
+        if len(parts) >= 4:
+            return LocationEntity(latitude=parts[-2], longitude=parts[-1], barangay=location_str)
+    # Default to Manila coordinates when location cannot be resolved
+    return LocationEntity(latitude="14.5995", longitude="120.9842", barangay=location_str)
+
+
+@tool
+def get_weather_analytics_tool(location: str, start_date: str, end_date: str, daily_vars: list[str], granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none") -> str:
+    """Gets historical weather analytics data for a location.
+    Args:
+        location: The name of the city, municipality, or province.
+        start_date: Exact start date in YYYY-MM-DD (must be a past date).
+        end_date: Exact end date in YYYY-MM-DD (must be a past date).
+        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
+        granularity: 'day', 'month', or 'year'. Default 'day'.
+        inner_aggregation: 'mean', 'max', or 'min'. Default 'mean'.
+        find_extreme: 'highest', 'lowest', or 'none'. Default 'none'.
+    """
+    loc = _resolve_location(location)
+    if not loc:
+        return "Error: Location not provided."
+    if not daily_vars:
+        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
+    return get_weather_analytics(float(loc.latitude), float(loc.longitude), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
+
+
+@tool
+def get_weather_forecast_tool(location: str, daily_vars: list[str]) -> str:
+    """Gets future weather forecast for a location.
+    Dates are always for the upcoming week from today.
+    Args:
+        location: The name of the city, municipality, or province.
+        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
+    """
+    loc = _resolve_location(location)
+    if not loc:
+        return "Error: Location not provided."
+    if not daily_vars:
+        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
+    return get_weather_forecast(float(loc.latitude), float(loc.longitude), daily_vars)
+
+
+# ---------------------------------------------------------------------------
+# MODULE: REACT LOOP — Tool Caller Node (Reason step)
+# ---------------------------------------------------------------------------
+
+def node_tool_caller(state: AgentState) -> dict:
+    """Node 3 — ReAct Reason step: LLM decides which tools to call."""
+    if state.error or state.intent not in ["analytics", "forecast"]:
+        return state
+
+    today_dt = datetime.datetime.now()
+    today_str = today_dt.strftime("%Y-%m-%d")
+    weekday_str = today_dt.strftime("%A")
+
+    tools = [get_weather_analytics_tool, get_weather_forecast_tool]
+    llm_with_tools = llm.bind_tools(tools)
+
+    system_instructions = (
+        f"Today's Date: {today_str} ({weekday_str}).\n"
+        f"The user intent is: {state.intent}\n\n"
+        "Rules:\n"
+        "1. Convert all time periods to exact YYYY-MM-DD formats.\n"
+        "2. Resolve relative dates ('yesterday', 'last month') relative to today's date.\n"
+        "3. If historical, dates cannot exceed today. Cap them at yesterday.\n"
+        "4. Today is in the year 2026. Therefore, any date in 2024 or 2025 is in the past. You must call get_weather_analytics_tool for these past dates.\n"
+        "5. If a query asks for weather on a single specific day in the past, set BOTH start_date and end_date to that same day in YYYY-MM-DD format.\n"
+        "6. You must invoke the tools when you have the location and dates. Do not answer directly without calling the tools first.\n"
+        "7. If the user did not specify a location, DO NOT call any tool. Ask for the location.\n\n"
+        "Example of historical query for a single day:\n"
+        "Query: 'What was the temperature in Cebu on 2025-05-10?'\n"
+        "Tool Call: get_weather_analytics_tool(location='Cebu', start_date='2025-05-10', end_date='2025-05-10', daily_vars=['temperature_2m_max', 'temperature_2m_min'])\n"
+    )
+
+    clean_history = [msg for msg in (state.messages or []) if not isinstance(msg, SystemMessage)]
+
+    messages = [SystemMessage(content=system_instructions)]
+    messages.extend(clean_history)
+    if not (clean_history and isinstance(clean_history[-1], HumanMessage) and clean_history[-1].content == state.user_query):
+        messages.append(HumanMessage(content=state.user_query))
+
+    response = llm_with_tools.invoke(messages)
+    messages.append(response)
+
+    if response.tool_calls:
+        print("LLM Tool Calls:", json.dumps(response.tool_calls, indent=2))
+        return {"messages": messages, "tool_calls": response.tool_calls, "waiting_for_location": False}
+
+    has_location = len(search_location(state.user_query)) > 0
+    if not has_location:
+        return {"messages": messages, "tool_calls": [], "waiting_for_location": True}
+    return {"messages": messages, "tool_calls": [], "waiting_for_location": False, "final_response": response.content}
+
+
+# ---------------------------------------------------------------------------
+# MODULE: REACT LOOP — Tool Execution Node (Act step)
+# ---------------------------------------------------------------------------
+
+def node_tool_execution(state: AgentState) -> dict:
+    """Node 4 — ReAct Act step: executes tool calls and appends observations."""
     if state.error and not state.error.startswith("{"):
         return state
-    if state.waiting_for_location:
+    if state.waiting_for_location or not state.tool_calls:
         return state
-        
-    try:
-        lat = float(state.location.latitude)
-        lon = float(state.location.longitude)
-        
-        # Extract vars from the hack
-        vars_dict = json.loads(state.error) if state.error and state.error.startswith("{") else {"daily": []}
-        print(f"\n=== TOOL EXECUTION VARS JSON ===\n{json.dumps(vars_dict, indent=2)}\n================================\n")
-        
-        daily_vars = vars_dict.get("daily", ["temperature_2m_max", "precipitation_sum"])
-        
-        if state.intent == "analytics":
-            sd = state.start_date or "2023-01-01"
-            ed = state.end_date or "2023-01-31"
-            md = get_weather_analytics(lat, lon, sd, ed, daily_vars)
-            return {"weather_data_markdown": md, "error": None} # clear the hack
-        elif state.intent == "forecast":
-            md = get_weather_forecast(lat, lon, daily_vars)
-            return {"weather_data_markdown": md, "error": None}
-    except Exception as e:
-        return {"error": f"Tool execution failed: {e}"}
-        
-    return state
 
-def node_generation(state: AgentState):
+    try:
+        messages = list(state.messages or [])
+        md_list = []
+        resolved_locs = []
+
+        for tool_call in state.tool_calls:
+            name = tool_call["name"]
+            args = tool_call["args"]
+            tool_call_id = tool_call.get("id", "")
+
+            print(f"\n=== EXECUTING TOOL {name} ===\n{json.dumps(args, indent=2)}\n================================\n")
+
+            if name == "get_weather_analytics_tool":
+                md = get_weather_analytics_tool.invoke(args)
+            elif name == "get_weather_forecast_tool":
+                md = get_weather_forecast_tool.invoke(args)
+            else:
+                md = f"Unknown tool: {name}"
+
+            messages.append(ToolMessage(content=md, tool_call_id=tool_call_id))
+            md_list.append(md)
+
+            loc = _resolve_location(args.get("location", ""))
+            if loc:
+                resolved_locs.append(loc)
+
+        combined_md = "\n\n".join(md_list)
+        final_loc = resolved_locs[0] if resolved_locs else None
+        return {"messages": messages, "weather_data_markdown": combined_md, "location": final_loc, "tool_calls": [], "error": None}
+
+    except Exception as e:
+        messages = list(state.messages or [])
+        for tool_call in state.tool_calls:
+            messages.append(ToolMessage(content=f"Error executing tool: {e}", tool_call_id=tool_call.get("id", "")))
+        return {"messages": messages, "error": f"Tool execution failed: {e}", "tool_calls": []}
+
+
+# ---------------------------------------------------------------------------
+# MODULE: RAG GENERATION — System Prompt & Generation Node
+# ---------------------------------------------------------------------------
+
+GENERATION_PROMPT = """You are WeatherTato, a concise weather assistant for Filipino farmers and agricultural workers.
+
+STRICT RULES:
+1. Keep the ENTIRE response to 4 sentences or fewer (excluding any ALERT).
+2. If there is severe weather (very heavy rain >60mm, strong winds >60km/h, extreme heat >35°C), lead with a bold "⚠️ ALERT: [condition]." on its own line.
+3. Describe values in plain words FIRST, raw number in parentheses second — e.g. "Heavy (45mm)", "Very Hot (37.2°C)", "Calm (12 km/h)".
+   Scales: Rain: None(0) Light(1-10) Moderate(11-30) Heavy(31-60) Very Heavy(>60) mm | Temp: Cool(<20) Warm(20-29) Hot(30-35) Very Hot(>35) °C | Wind: Calm(0-20) Breezy(21-40) Windy(41-60) Strong(>60) km/h | Humidity: Low(<50) Comfortable(50-70) High(71-85) Very High(>85) %
+4. Base answers ONLY on the provided data. Never invent or guess values.
+5. NEVER give farming advice, crop recommendations, or planting/irrigation guidance.
+6. NEVER tell the user you don't have weather data loaded yet.
+7. NEVER tell the user that you're an AI language model.
+Be natural and focus on answering the user's query in the most helpful way possible.
+
+User Query: {query}
+
+Weather Data Context:
+{weather_data}
+"""
+
+
+def node_generation(state: AgentState) -> dict:
+    """Node 5 — Response generation with three distinct output modes."""
     if state.error and not state.error.startswith("{"):
         return {"final_response": state.error}
-        
+
     if state.waiting_for_location:
         return {"final_response": "Please state the specific location for the weather data."}
-        
+
     if state.intent == "off-topic":
         return {"final_response": "I can only answer questions related to weather conditions and forecasts."}
-        
-    if state.intent == "general" and not state.weather_data_markdown:
-        prompt = GENERATION_PROMPT.format(query=state.user_query, weather_data="No data available for general queries.")
-    else:
-        prompt = GENERATION_PROMPT.format(query=state.user_query, weather_data=state.weather_data_markdown or "")
-        
-    response = llm.invoke(prompt)
+
+    weather_data = state.weather_data_markdown or "No data available."
+    system_content = GENERATION_PROMPT.format(query=state.user_query, weather_data=weather_data)
+
+    raw_history = list(state.messages or [])
+    resolved_tool_call_ids = {msg.tool_call_id for msg in raw_history if isinstance(msg, ToolMessage)}
+
+    safe_history = []
+    for msg in raw_history:
+        if isinstance(msg, SystemMessage):
+            continue
+        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+            pending_ids = {tc["id"] for tc in msg.tool_calls}
+            if not pending_ids.issubset(resolved_tool_call_ids):
+                continue
+        safe_history.append(msg)
+
+    if not (safe_history and isinstance(safe_history[-1], HumanMessage) and safe_history[-1].content == state.user_query):
+        safe_history.append(HumanMessage(content=state.user_query))
+
+    messages = [SystemMessage(content=system_content)] + safe_history
+    response = llm.invoke(messages)
     return {"final_response": response.content}
 
 
-# Edge routing functions
-def router_after_guardrails(state: AgentState):
-    if state.error:
-        return "generation"
-    return "classifier"
-    
-def router_after_classifier(state: AgentState):
+# ---------------------------------------------------------------------------
+# MODULE: REACT GRAPH — Edge Routers & Compiled Graph
+# ---------------------------------------------------------------------------
+
+def router_after_guardrails(state: AgentState) -> str:
+    """Conditional edge router after ``node_guardrails``."""
+    return "generation" if state.error else "classifier"
+
+
+def router_after_classifier(state: AgentState) -> str:
+    """Conditional edge router after ``node_classifier``."""
     if state.intent in ["analytics", "forecast"]:
-        return "slot_extraction"
+        return "tool_caller"
     return "generation"
-    
-def router_after_slots(state: AgentState):
+
+
+def router_after_tool_caller(state: AgentState) -> str:
+    """Conditional edge router after ``node_tool_caller``."""
     if state.error and not state.error.startswith("{"):
         return "generation"
     if state.waiting_for_location:
         return "generation"
-    return "tool_execution"
+    if state.tool_calls:
+        return "tool_execution"
+    return "generation"
 
-# Build Graph
+
+# ---------------------------------------------------------------------------
+# MODULE 7: REACT / STATE GRAPH AGENT — Graph Assembly
+# ---------------------------------------------------------------------------
+
 workflow = StateGraph(AgentState)
-workflow.add_node("guardrails", node_guardrails)
-workflow.add_node("classifier", node_classifier)
-workflow.add_node("slot_extraction", node_slot_extraction)
+workflow.add_node("guardrails",    node_guardrails)
+workflow.add_node("classifier",    node_classifier)
+workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
-workflow.add_node("generation", node_generation)
+workflow.add_node("generation",    node_generation)
 
 workflow.add_edge(START, "guardrails")
-workflow.add_conditional_edges("guardrails", router_after_guardrails)
-workflow.add_conditional_edges("classifier", router_after_classifier)
-workflow.add_conditional_edges("slot_extraction", router_after_slots)
-workflow.add_edge("tool_execution", "generation")
+workflow.add_conditional_edges("guardrails",    router_after_guardrails)
+workflow.add_conditional_edges("classifier",    router_after_classifier)
+workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
+workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
+
 workflow.add_edge("generation", END)
 
 compiled_graph = workflow.compile()

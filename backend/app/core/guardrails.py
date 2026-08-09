@@ -1,3 +1,6 @@
+"""
+WeatherTato — Input Safety & Guardrails Utilities
+"""
 import re
 
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
@@ -19,38 +22,44 @@ WEATHER_KEYWORDS = [
     "cool", "drizzle", "shower", "dry", "wet"
 ]
 
-FARMING_ADVICE_KEYWORDS = ["what to plant", "when to plant", "fertilizer", "pesticide", "harvesting schedule", "crop yield"]
+FARMING_ADVICE_KEYWORDS = [
+    "what to plant", "when to plant", "should i plant", "plant corn", 
+    "crop recommendation", "fertilizer", "pesticide", "harvesting schedule", 
+    "crop yield", "farming advice", "plant "
+]
+
 
 def remove_pii(text: str) -> str:
+    """Remove personally identifiable information from a text string."""
     text = re.sub(EMAIL_REGEX, "[REDACTED]", text)
     text = re.sub(PHONE_REGEX, "[REDACTED]", text)
     text = re.sub(CREDIT_CARD_REGEX, "[REDACTED]", text)
     text = re.sub(NAME_REGEX, r"[REDACTED]", text)
     return text
 
+
 def detect_prompt_injection(text: str) -> bool:
+    """Detect whether text contains known prompt injection or jailbreak patterns."""
     lower_text = text.lower()
     for pattern in INJECTION_PATTERNS:
         if pattern in lower_text:
             return True
     return False
 
+
 def is_weather_related(text: str) -> bool:
+    """Check whether text contains at least one weather-related keyword."""
     lower_text = text.lower()
     for word in WEATHER_KEYWORDS:
         if word in lower_text:
             return True
     return False
 
+
 def requests_farming_advice(text: str) -> bool:
+    """Check whether text requests agronomic or farming advice."""
     lower_text = text.lower()
     for word in FARMING_ADVICE_KEYWORDS:
         if word in lower_text:
             return True
     return False
-
-def validate_output(answer: str) -> str:
-    banned_words = ["I think", "probably", "maybe", "I guess", "approximately"]
-    for word in banned_words:
-        answer = answer.replace(word, "")
-    return answer.strip()
