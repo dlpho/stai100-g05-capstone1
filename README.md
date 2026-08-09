@@ -5,10 +5,8 @@ WeatherTato is a localized conversational weather assistant tailored for farmers
 ---
 
 ## 📋 Prerequisites
-* **Python**: `3.12` — mandatory for full dependency compatibility (LangGraph, MLflow, Pydantic v2, etc.).
-  Verify with: `py -3.12 --version`
-* **pip**: Included with Python 3.12.
-* **DeepSeek API Key**: Register at [platform.deepseek.com](https://platform.deepseek.com) to get your API key.
+* **Python**: `3.12` (for full dependency compatibility with LangGraph, MLflow, Pydantic v2, etc.)
+* **DeepSeek API Key**
 
 ---
 
@@ -51,7 +49,7 @@ pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment Variables
-Copy the example file and fill in your credentials:
+Copy the example file and fill in credentials:
 ```bash
 # Windows
 copy .env.example .env
@@ -75,29 +73,13 @@ BACKEND_PORT=7860
 BACKEND_URL=http://127.0.0.1:7860
 
 # MLflow Observability & Tracing (Optional)
-# Set to true to enable logging, or false to completely bypass MLflow
+# Set to true to enable logging, or false if not needed
 ENABLE_MLFLOW=false
 MLFLOW_TRACKING_URI=sqlite:///mlflow_data/mlflow_traces.db
 MLFLOW_EXPERIMENT_NAME=WeatherTato
 ```
 
-> **Note on `BACKEND_HOST=0.0.0.0`:** This tells FastAPI to listen on all interfaces — not just loopback. This is intentional and required for Proxmox container deployments. `BACKEND_URL=http://127.0.0.1:7860` is a separate client-side setting telling Streamlit where to reach the backend.
-
-### 5. Verify Setup
-Run this quick check before starting services:
-```powershell
-# Confirm Python version inside venv
-python --version
-
-# Confirm streamlit is installed
-streamlit --version
-
-# Confirm backend modules load correctly
-python -c "import sys; sys.path.insert(0, 'backend'); sys.path.insert(0, 'backend/app'); from app.services.llm_service import compiled_graph; print('Backend OK')"
-```
-All three commands should complete without errors.
-
-### 6. Run All Services
+### 5. Run Program
 
 **Option A — Quick Start (Recommended):** Starts MLflow, FastAPI, and Streamlit together:
 ```bash

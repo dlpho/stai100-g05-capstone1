@@ -1,8 +1,4 @@
-"""Search PSGC CSV files for location names matching a prompt.
-
-Uses hierarchical matching: province first, then municipality/barangay
-filtered by parent, yielding compact, high-relevance results for the LLM.
-"""
+"""Search PSGC CSV files for location names matching a prompt."""
 
 import csv
 import os

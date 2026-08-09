@@ -1,3 +1,6 @@
+"""
+WeatherTato — Open-Meteo Weather Data Service
+"""
 import openmeteo_requests
 import requests_cache
 import pandas as pd
@@ -8,7 +11,18 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
-def get_weather_analytics(lat: float, lon: float, start_date: str, end_date: str, daily_vars: list, granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none") -> str:
+
+def get_weather_analytics(
+    lat: float,
+    lon: float,
+    start_date: str,
+    end_date: str,
+    daily_vars: list,
+    granularity: str = "day",
+    inner_aggregation: str = "mean",
+    find_extreme: str = "none"
+) -> str:
+    """Fetch and aggregate historical weather data from the Open-Meteo Archive API."""
     url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": lat,
@@ -68,7 +82,9 @@ def get_weather_analytics(lat: float, lon: float, start_date: str, end_date: str
         
     return md_output
 
+
 def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
+    """Fetch a 14-day weather forecast from the Open-Meteo Forecast API."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat,

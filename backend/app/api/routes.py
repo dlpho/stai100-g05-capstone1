@@ -1,3 +1,6 @@
+"""
+WeatherTato — API Route Handler
+"""
 import logging
 from fastapi import APIRouter
 
@@ -16,7 +19,9 @@ if ENABLE_MLFLOW:
     except Exception as e:
         logger.warning(f"[MLflow Warning] Failed to initialize MLflow tracking: {e}")
 
-def run_agent(query: UserQuery):
+
+def run_agent(query: UserQuery) -> dict:
+    """Hydrate conversation history and invoke the LangGraph agent."""
     from langchain_core.messages import HumanMessage, AIMessage
     
     # Map input history list to LangChain message instances
@@ -62,7 +67,8 @@ def run_agent(query: UserQuery):
 
 
 @router.post("/chat")
-def chat_endpoint(query: UserQuery):
+def chat_endpoint(query: UserQuery) -> dict:
+    """Handle a single chat turn from the Streamlit frontend."""
     if ENABLE_MLFLOW:
         try:
             import mlflow

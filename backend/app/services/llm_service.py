@@ -1,3 +1,6 @@
+"""
+WeatherTato — LangGraph ReAct Agent Orchestration
+"""
 import datetime
 import json
 import re
@@ -23,8 +26,12 @@ llm = ChatOpenAI(
 )
 
 
-# --- MODULE 6: GUARDRAILS ---
-def node_guardrails(state: AgentState):
+# ---------------------------------------------------------------------------
+# MODULE 6: GUARDRAILS NODE
+# ---------------------------------------------------------------------------
+
+def node_guardrails(state: AgentState) -> dict:
+    """Node 1 — Safety guardrails applied to every incoming query."""
     query = state.user_query
     clean_query = remove_pii(query)
     
@@ -40,8 +47,11 @@ def node_guardrails(state: AgentState):
     return {"user_query": clean_query}
 
 
-# --- MODULE 1: PROMPT ENGINEERING (Few-Shot Classifier System Prompt) ---
-# --- MODULE 2: STRUCTURED OUTPUTS (Intent Classifier JSON) ---
+# ---------------------------------------------------------------------------
+# MODULE 1: PROMPT ENGINEERING (Few-Shot Classifier System Prompt)
+# MODULE 2: STRUCTURED OUTPUTS (Intent Classifier JSON)
+# ---------------------------------------------------------------------------
+
 WEATHER_INTENTS = {
     "analytics": "User wants historical weather data for past dates (e.g., 'What was the weather like in Cebu last year?', 'Give me the temperature on 2025-05-10')",
     "forecast":  "User wants future weather predictions or forecasts (e.g., 'What is the forecast for Manila tomorrow?', 'Will it rain next week?')",
@@ -74,7 +84,9 @@ FEW_SHOT_EXAMPLES = [
     {"role": "assistant", "content": '{"intent": "off-topic", "confidence": 0.95, "reasoning": "User asking a general question unrelated to weather"}'},
 ]
 
-def node_classifier(state: AgentState):
+
+def node_classifier(state: AgentState) -> dict:
+    """Node 2 — Few-shot intent classifier."""
     if state.error:
         return state
 
@@ -119,10 +131,12 @@ def node_classifier(state: AgentState):
     return {"intent": intent}
 
 
-# --- MODULE: TOOL USE — Geocoding & Weather Tools ---
+# ---------------------------------------------------------------------------
+# MODULE: TOOL USE — Geocoding & Weather Tools
+# ---------------------------------------------------------------------------
 
-def _resolve_location(location_str: str):
-    """Resolve a location string to lat/lon via the offline Philippine CSV geocoder."""
+def _resolve_location(location_str: str) -> LocationEntity | None:
+    """Resolve a free-text location string to lat/lon via the offline PSGC geocoder."""
     if not location_str:
         return None
     ref_lines = search_location(location_str)
@@ -170,9 +184,12 @@ def get_weather_forecast_tool(location: str, daily_vars: list[str]) -> str:
     return get_weather_forecast(float(loc.latitude), float(loc.longitude), daily_vars)
 
 
-# --- MODULE: REACT LOOP — Tool Caller Node ---
+# ---------------------------------------------------------------------------
+# MODULE: REACT LOOP — Tool Caller Node (Reason step)
+# ---------------------------------------------------------------------------
 
-def node_tool_caller(state: AgentState):
+def node_tool_caller(state: AgentState) -> dict:
+    """Node 3 — ReAct Reason step: LLM decides which tools to call."""
     if state.error or state.intent not in ["analytics", "forecast"]:
         return state
 
@@ -219,9 +236,12 @@ def node_tool_caller(state: AgentState):
     return {"messages": messages, "tool_calls": [], "waiting_for_location": False, "final_response": response.content}
 
 
-# --- MODULE: REACT LOOP — Tool Execution Node ---
+# ---------------------------------------------------------------------------
+# MODULE: REACT LOOP — Tool Execution Node (Act step)
+# ---------------------------------------------------------------------------
 
-def node_tool_execution(state: AgentState):
+def node_tool_execution(state: AgentState) -> dict:
+    """Node 4 — ReAct Act step: executes tool calls and appends observations."""
     if state.error and not state.error.startswith("{"):
         return state
     if state.waiting_for_location or not state.tool_calls:
@@ -264,7 +284,9 @@ def node_tool_execution(state: AgentState):
         return {"messages": messages, "error": f"Tool execution failed: {e}", "tool_calls": []}
 
 
-# --- MODULE: RAG GENERATION — System Prompt & Generation Node ---
+# ---------------------------------------------------------------------------
+# MODULE: RAG GENERATION — System Prompt & Generation Node
+# ---------------------------------------------------------------------------
 
 GENERATION_PROMPT = """You are WeatherTato, a concise weather assistant for Filipino farmers and agricultural workers.
 
@@ -285,7 +307,9 @@ Weather Data Context:
 {weather_data}
 """
 
-def node_generation(state: AgentState):
+
+def node_generation(state: AgentState) -> dict:
+    """Node 5 — Response generation with three distinct output modes."""
     if state.error and not state.error.startswith("{"):
         return {"final_response": state.error}
 
@@ -319,18 +343,24 @@ def node_generation(state: AgentState):
     return {"final_response": response.content}
 
 
-# --- MODULE: REACT GRAPH — Edge Routers & Compiled Graph ---
+# ---------------------------------------------------------------------------
+# MODULE: REACT GRAPH — Edge Routers & Compiled Graph
+# ---------------------------------------------------------------------------
 
-def router_after_guardrails(state: AgentState):
+def router_after_guardrails(state: AgentState) -> str:
+    """Conditional edge router after ``node_guardrails``."""
     return "generation" if state.error else "classifier"
 
 
-def router_after_classifier(state: AgentState):
+def router_after_classifier(state: AgentState) -> str:
+    """Conditional edge router after ``node_classifier``."""
     if state.intent in ["analytics", "forecast"]:
         return "tool_caller"
     return "generation"
 
-def router_after_tool_caller(state: AgentState):
+
+def router_after_tool_caller(state: AgentState) -> str:
+    """Conditional edge router after ``node_tool_caller``."""
     if state.error and not state.error.startswith("{"):
         return "generation"
     if state.waiting_for_location:
@@ -340,12 +370,14 @@ def router_after_tool_caller(state: AgentState):
     return "generation"
 
 
-# --- MODULE 7: REACT / STATE GRAPH AGENT ---
-workflow = StateGraph(AgentState)
-workflow.add_node("guardrails", node_guardrails)
-workflow.add_node("classifier", node_classifier)
-workflow.add_node("tool_caller", node_tool_caller)
+# ---------------------------------------------------------------------------
+# MODULE 7: REACT / STATE GRAPH AGENT — Graph Assembly
+# ---------------------------------------------------------------------------
 
+workflow = StateGraph(AgentState)
+workflow.add_node("guardrails",    node_guardrails)
+workflow.add_node("classifier",    node_classifier)
+workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
 workflow.add_node("generation",    node_generation)
 
