@@ -9,3 +9,7 @@ DEEPSEEK_BASE_URL = os.getenv(
     "DEEPSEEK_BASE_URL",
     "https://api.deepseek.com"
 )
+
+ENABLE_MLFLOW = os.getenv("ENABLE_MLFLOW", "false").lower() == "true"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "./mlruns")
+MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "WeatherTato")

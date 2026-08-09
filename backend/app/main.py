@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from app.api.routes import router
+from api.routes import router
 
 app = FastAPI(title="WeatherTato Backend", version="1.0.0")
 

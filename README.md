@@ -23,8 +23,7 @@ WeatherTato is a localized conversational weather assistant tailored for farmers
 3. **Install Dependencies**:
    Ensure you have virtualenv activated, then run:
    ```bash
-   pip install -r backend/requirements.txt
-   pip install -r frontend/requirements.txt
+   pip install -r requirements.txt
    ```
 
 4. **Run Both Backend & Frontend (Quick Start)**:
