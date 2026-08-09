@@ -10,7 +10,7 @@ from typing import Optional
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_BASE_DIR)
-_CSV_DIR = os.path.join(_PROJECT_ROOT, os.pardir)
+_CSV_DIR = os.path.abspath(os.path.join(_PROJECT_ROOT, os.pardir, os.pardir, "data"))
 
 BARANGAY_CSV = os.path.join(_CSV_DIR, "philippines_barangay_coordinates_2023.csv")
 MUNICITY_CSV = os.path.join(_CSV_DIR, "philippines_municities_coordinates_2023.csv")

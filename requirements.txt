@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+langchain
+langchain_openai
+langgraph
+pydantic
+pydantic-settings
+mlflow
+openmeteo-requests
+requests-cache
+retry-requests
+pandas
+python-dotenv
+openai
+requests
+tabulate
+streamlit

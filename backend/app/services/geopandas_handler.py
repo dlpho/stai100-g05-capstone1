@@ -1,4 +1,10 @@
 import geopandas as gpd
+import os
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_BASE_DIR)
+_DATA_DIR = os.path.abspath(os.path.join(_PROJECT_ROOT, os.pardir, os.pardir, "data"))
+
 
 brgy_path = "philippines-psgc-shapefiles/data/2023/BgySubMuns/phl_admbnda_adm4_psa_namria_20231106.shp"
 brgy_gdf = gpd.read_file(brgy_path)
@@ -31,7 +37,7 @@ brgy_final = brgy_final.rename(columns={
 })
 
 # Export
-brgy_final.to_csv("philippines_barangay_coordinates_2023.csv", index=False)
+brgy_final.to_csv(os.path.join(_DATA_DIR, "philippines_barangay_coordinates_2023.csv"), index=False)
 
 
 
@@ -57,7 +63,7 @@ municities_final = municities_final.rename(columns={
 })
 
 # Export
-municities_final.to_csv("philippines_municities_coordinates_2023.csv", index=False)
+municities_final.to_csv(os.path.join(_DATA_DIR, "philippines_municities_coordinates_2023.csv"), index=False)
 
 
 
@@ -82,4 +88,4 @@ provdists_final = provdists_final.rename(columns={
 })
 
 # Export
-provdists_final.to_csv("philippines_provdists_coordinates_2023.csv", index=False)
+provdists_final.to_csv(os.path.join(_DATA_DIR, "philippines_provdists_coordinates_2023.csv"), index=False)
