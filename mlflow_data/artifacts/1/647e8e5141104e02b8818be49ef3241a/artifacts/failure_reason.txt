@@ -1,1 +1,0 @@
-Location resolved incorrectly (fell back to Manila coordinates: 14.5995, 120.9842)

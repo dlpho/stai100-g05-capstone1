@@ -1,1 +1,0 @@
-Please state the specific location for the weather data.

@@ -1,3 +1,0 @@
-Hi there! I'm here to help you understand weather data in plain, simple language. But right now, I don't have any weather information to work with.
-
-If you give me a location and a time (like a specific day or a range), I can translate things like rain, temperature, wind, humidity, soil temperature, and more into easy-to-read summaries. Just tell me what you need!
