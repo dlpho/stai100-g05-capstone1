@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
-from app.core.env import ENABLE_MLFLOW, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
+from core.env import ENABLE_MLFLOW, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
+from api.routes import router
 
-# Setup MLflow tracking if enabled, wrapped in try-catch to keep service online if MLflow is down
 if ENABLE_MLFLOW:
     try:
         import mlflow
@@ -15,8 +15,6 @@ if ENABLE_MLFLOW:
         print(f"MLflow auto-tracing enabled. Tracking URI: {MLFLOW_TRACKING_URI}")
     except Exception as e:
         print(f"Failed to initialize MLflow tracing: {e}")
-
-from api.routes import router
 
 app = FastAPI(title="WeatherTato Backend", version="1.0.0")
 
@@ -34,4 +32,3 @@ if __name__ == "__main__":
     host = os.getenv("BACKEND_HOST", "0.0.0.0")
     port = int(os.getenv("BACKEND_PORT", "7860"))
     uvicorn.run(app, host=host, port=port)
-

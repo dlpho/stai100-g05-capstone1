@@ -13,10 +13,11 @@ sys.path.insert(0, backend_dir)
 os.environ["ENABLE_MLFLOW"] = "true"
 
 import mlflow
-from app.services.llm_service import compiled_graph
-from app.core.env import MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
+from backend.app.services.llm_service import compiled_graph
+from backend.app.core.env import MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
 
 # Setup MLflow experiment
+os.makedirs("mlflow_data", exist_ok=True)
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 

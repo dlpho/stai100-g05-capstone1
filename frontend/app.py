@@ -21,7 +21,6 @@ st.set_page_config(page_title="WeatherTato", page_icon="🌦️", layout="wide")
 # --- SIDEBAR DOCUMENTATION ---
 with st.sidebar:
     st.markdown("# WeatherTato Assistant")
-    st.markdown("A gramular weather advisor tailored for Filipino farmers, agricultural workers, and delivery riders.")
     
     st.markdown("### ❓ Questions You Can Ask")
     st.markdown("""
@@ -56,7 +55,7 @@ with st.sidebar:
 
 # --- MAIN INTERFACE ---
 st.title("🥔 WeatherTato: AI Weather Assistant")
-st.markdown("##### What can I help you with?.")
+st.markdown("##### What can I help you with?")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
