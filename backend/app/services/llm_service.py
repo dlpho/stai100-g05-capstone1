@@ -2,15 +2,15 @@ from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
-from app.models.schemas import AgentState, LocationEntity
-from app.core.guardrails import detect_prompt_injection, remove_pii, requests_farming_advice
-from app.services.meteo_service import get_weather_analytics, get_weather_forecast
-from app.services.location_search import search_location
+from models.schemas import AgentState, LocationEntity
+from core.guardrails import detect_prompt_injection, remove_pii, requests_farming_advice
+from services.meteo_service import get_weather_analytics, get_weather_forecast
+from services.location_search import search_location
 import json
 import re
 import datetime
 
-from app.core.env import (
+from core.env import (
     DEEPSEEK_API_KEY,
     DEEPSEEK_MODEL,
     DEEPSEEK_BASE_URL,

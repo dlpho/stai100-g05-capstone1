@@ -16,7 +16,7 @@ if ENABLE_MLFLOW:
     except Exception as e:
         print(f"Failed to initialize MLflow tracing: {e}")
 
-from app.api.routes import router
+from api.routes import router
 
 app = FastAPI(title="WeatherTato Backend", version="1.0.0")
 
