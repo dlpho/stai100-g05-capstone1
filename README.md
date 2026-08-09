@@ -5,71 +5,113 @@ WeatherTato is a localized conversational weather assistant tailored for farmers
 ---
 
 ## 📋 Prerequisites
-* **Python**: `3.12` (Mandatory version for dependency compatibility).
+* **Python**: `3.12` — mandatory for full dependency compatibility (LangGraph, MLflow, Pydantic v2, etc.).
+  Verify with: `py -3.12 --version`
+* **pip**: Included with Python 3.12.
+* **DeepSeek API Key**: Register at [platform.deepseek.com](https://platform.deepseek.com) to get your API key.
 
 ---
 
 ## 🛠️ Installation & Setup
 
-1. **Clone the Repository**:
-   ```bash
-   git clone <repo_url>
-   cd stai100-g05-capstone1
-   ```
+### 1. Clone the Repository
+```bash
+git clone <repo_url>
+cd stai100-g05-capstone1
+```
 
-2. **Configure Environment Variables**:
-   Create a `.env` file in the root directory based on the provided [.env.example](file:///c:/Users/Liana%20Ho/Documents/school/stai100-g05-capstone1/.env.example):
-   ```ini
-   # DeepSeek API Configuration
-   DEEPSEEK_API_KEY=your-api-key
-   DEEPSEEK_MODEL=deepseek-v4-flash
-   DEEPSEEK_BASE_URL=https://api.deepseek.com
+### 2. Create a Python 3.12 Virtual Environment
+This project **requires Python 3.12**. Use the `py` launcher to explicitly target the correct version:
 
-   # Backend Config (FastAPI server binding)
-   BACKEND_HOST=0.0.0.0
-   BACKEND_PORT=7860
+**Windows (PowerShell):**
+```powershell
+# Create the virtual environment using Python 3.12
+py -3.12 -m venv .venv312
 
-   # Frontend Config (Streamlit connection endpoint)
-   # Set this to the backend FastAPI container IP/domain in Proxmox (e.g. http://10.0.0.10:7860)
-   BACKEND_URL=http://127.0.0.1:7860
+# Activate it
+.venv312\Scripts\activate
+```
 
-   # MLflow Observability & Tracing (Optional)
-   # Set to true to enable logging, or false to completely bypass MLflow
-   ENABLE_MLFLOW=false
-   # If using a separate container for MLflow in Proxmox, set this to http://<mlflow-container-ip>:5000
-   MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-   MLFLOW_EXPERIMENT_NAME=WeatherTato
-   ```
+**macOS / Linux:**
+```bash
+python3.12 -m venv .venv312
+source .venv312/bin/activate
+```
 
-3. **Install Dependencies**:
-   Ensure you have your virtual environment activated, then run:
-   ```bash
-   pip install -r requirements.txt
-   ```
+> After activation, your prompt should show `(.venv312)`. Confirm the right Python is active:
+> ```bash
+> python --version   # Should output: Python 3.12.x
+> pip --version      # Should reference .venv312
+> ```
 
-4. **Run Both Backend & Frontend (Quick Start)**:
-   Launch both services sequentially with automatic health monitoring and cleanup using:
-   ```bash
-   python run.py
-   ```
-   *This starts the MLflow server, waits for it, starts the FastAPI backend, and then starts the Streamlit frontend. Terminating this command automatically shuts down all background processes.*
+### 3. Install Dependencies
+With your virtual environment activated:
+```bash
+pip install -r requirements.txt
+```
 
-5. **Manual Startup (Optional)**:
-   Alternatively, start manually in separate terminal windows:
-   * **FastAPI Backend (Port 7860):**
-     ```bash
-     python backend/app/main.py
-     ```
-    * **Streamlit Frontend (Port 8000):**
-      ```bash
-      streamlit run frontend/app.py --server.port 8000
-      ```
+### 4. Configure Environment Variables
+Copy the example file and fill in your credentials:
+```bash
+# Windows
+copy .env.example .env
 
-6. **Start MLflow Tracking UI**:
-   In a separate terminal with the virtual environment activated, run:
-   ```bash
-   mlflow ui --backend-store-uri sqlite:///mlflow_data/mlflow_traces.db
-   ```
+# macOS / Linux
+cp .env.example .env
+```
+
+Then edit `.env` — the minimum required values are:
+```ini
+# DeepSeek API Configuration
+DEEPSEEK_API_KEY=your-api-key-here
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+# Backend Config (FastAPI server binding)
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=7860
+
+# Frontend Config (Streamlit connection endpoint)
+BACKEND_URL=http://127.0.0.1:7860
+
+# MLflow Observability & Tracing (Optional)
+# Set to true to enable logging, or false to completely bypass MLflow
+ENABLE_MLFLOW=false
+MLFLOW_TRACKING_URI=sqlite:///mlflow_data/mlflow_traces.db
+MLFLOW_EXPERIMENT_NAME=WeatherTato
+```
+
+> **Note on `BACKEND_HOST=0.0.0.0`:** This tells FastAPI to listen on all interfaces — not just loopback. This is intentional and required for Proxmox container deployments. `BACKEND_URL=http://127.0.0.1:7860` is a separate client-side setting telling Streamlit where to reach the backend.
+
+### 5. Verify Setup
+Run this quick check before starting services:
+```powershell
+# Confirm Python version inside venv
+python --version
+
+# Confirm streamlit is installed
+streamlit --version
+
+# Confirm backend modules load correctly
+python -c "import sys; sys.path.insert(0, 'backend'); sys.path.insert(0, 'backend/app'); from app.services.llm_service import compiled_graph; print('Backend OK')"
+```
+All three commands should complete without errors.
+
+### 6. Run All Services
+
+**Option A — Quick Start (Recommended):** Starts MLflow, FastAPI, and Streamlit together:
+```bash
+python run.py
+```
+*Terminating this command (`Ctrl+C`) automatically shuts down all background processes.*
+
+**Option B — Manual Startup** (3 separate terminals, each with `.venv312` activated):
+
+| Terminal | Command | URL |
+| :--- | :--- | :--- |
+| Backend | `python backend/app/main.py` | http://127.0.0.1:7860/docs |
+| Frontend | `streamlit run frontend/app.py` | http://localhost:8000 |
+| MLflow UI | `mlflow ui --backend-store-uri sqlite:///mlflow_data/mlflow_traces.db` | http://localhost:5000 |
 
 ---
 
@@ -127,7 +169,7 @@ graph TD
 * **Frontend UI**: Streamlit (asynchronous chat interface with quick prompts).
 * **Backend Framework**: FastAPI & Uvicorn (REST API endpoint services).
 * **Graph Orchestrator**: LangGraph `StateGraph` (multi-node execution and routing).
-* **Large Language Model**: DeepSeek-v4-flash / Chat (accessed via LangChain `ChatOpenAI`).
+* **Large Language Model**: DeepSeek Chat (`deepseek-v4-flash`) accessed via LangChain `ChatOpenAI` wrapper pointed at `https://api.deepseek.com`.
 * **Geospatial Resolution**: Local coordinates database matching Philippine provinces, cities/municipalities, and barangay centroids processed offline from PSA/NAMRIA shapefiles using GeoPandas.
 * **Weather Service**: Open-Meteo API (Forecast & Archive) utilizing `requests-cache` and `retry-requests`.
 * **Observability (LLMOps)**: MLflow (autologs agent runs, node execution latency, token counts, and exceptions).
