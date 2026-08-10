@@ -5,6 +5,7 @@ import streamlit as st
 import requests
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables
 load_dotenv(override=True)
@@ -146,16 +147,17 @@ def settings():
     st.logo(logo)
     st.title("Settings")
     
-    st.markdown("### Session Management")
-    if st.button("Restart Session", use_container_width=True, type="primary"):
-        st.session_state.messages = []
-        st.success("Chat history cleared!")
-        
-    st.markdown("### UI Controls")
+    st.markdown("#### Preferences")
     wide_mode = st.toggle("Wide mode", value=st.session_state.get("wide_mode", True))
     if wide_mode != st.session_state.get("wide_mode", True):
         st.session_state.wide_mode = wide_mode
         st.rerun()
+
+    st.markdown("#### Session Management")
+    if st.button("Restart Session", use_container_width=True, type="primary"):
+        st.session_state.messages = []
+        st.success("Chat history cleared!")
+        
 
 
 # ==========================================
@@ -190,6 +192,7 @@ pages = {
 pg = st.navigation(pages)
 
 with st.sidebar:
-    st.caption("Created by Group 5 STAI100 - S09")
+    st.caption(f"Current Date & Time: {datetime.now().strftime('%b %d, %Y %I:%M %p')}")
+    # st.caption("Created by Group 5 STAI100 - S09")
 
 pg.run()
