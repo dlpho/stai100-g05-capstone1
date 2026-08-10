@@ -1,17 +1,16 @@
 [server]
 port = 8000
-address = "0.0.0.0"
-headless = true
 enableCORS = true
 enableXsrfProtection = true
 maxUploadSize = 200
+runOnSave = true
 
 [browser]
 gatherUsageStats = false
 
 [client]
 showErrorDetails = true
-toolbarMode = "minimal"
+toolbarMode = "developer"
 
 [theme]
 # WeatherTato Agricultural & Weather Dark Theme
