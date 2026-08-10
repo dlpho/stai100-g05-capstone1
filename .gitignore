@@ -221,11 +221,11 @@ __marimo__/
 .cache.sqlite
 mlflow.db
 mlruns/
+mlflow_data/
 
 
 .venv*/
 venv*/
 *env/
 
-REVISIONS.md
 /docs
