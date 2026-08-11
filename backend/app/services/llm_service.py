@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
@@ -187,6 +188,11 @@ def node_tool_caller(state: AgentState) -> dict:
     clean_history = [msg for msg in (state.messages or []) if not isinstance(msg, SystemMessage)]
 
     messages = [SystemMessage(content=system_instructions)]
+    
+    # Context Summary injection
+    if state.summary:
+        messages.append(SystemMessage(content=f"Previous Context Summary:\n{state.summary}"))
+        
     messages.extend(clean_history)
     if not (clean_history and isinstance(clean_history[-1], HumanMessage) and clean_history[-1].content == state.user_query):
         messages.append(HumanMessage(content=state.user_query))
@@ -306,9 +312,60 @@ def node_generation(state: AgentState) -> dict:
     if not (safe_history and isinstance(safe_history[-1], HumanMessage) and safe_history[-1].content == state.user_query):
         safe_history.append(HumanMessage(content=state.user_query))
 
-    messages = [SystemMessage(content=system_content)] + safe_history
+    messages = [SystemMessage(content=system_content)] 
+    
+    # Context Summary injection
+    if state.summary:
+        messages.append(SystemMessage(content=f"Previous Context Summary:\n{state.summary}"))
+        
+    messages.extend(safe_history)
     response = llm.invoke(messages)
-    return {"final_response": response.content}
+    
+    # Append the AI response to the state messages so it is remembered in the sliding window buffer
+    final_messages = list(state.messages or [])
+    if not (final_messages and isinstance(final_messages[-1], HumanMessage) and final_messages[-1].content == state.user_query):
+        final_messages.append(HumanMessage(content=state.user_query))
+    final_messages.append(AIMessage(content=response.content))
+    
+    return {"final_response": response.content, "messages": final_messages}
+
+# ---------------------------------------------------------------------------
+# MODULE: MEMORY — Context Summarization & Sliding Window
+# ---------------------------------------------------------------------------
+
+def node_memory_update(state: AgentState) -> dict:
+    """Node 6 — Updates the sliding window and summarizes older messages."""
+    if state.error:
+        return state
+
+    messages = list(state.messages or [])
+    
+    # Keep the recent 10 messages in the sliding window buffer
+    # If the buffer has more than 10 messages, summarize the older ones
+    if len(messages) > 10:
+        older_messages = messages[:-10]
+        recent_messages = messages[-10:]
+        
+        # Build prompt to summarize older messages
+        summary_prompt = "Summarize the key information from these past conversation messages."
+        if state.summary:
+            summary_prompt += f"\n\nExisting Summary:\n{state.summary}\n\nIncorporate the existing summary into your new summary."
+            
+        summary_prompt += "\n\nNew Messages to Summarize:\n"
+        for msg in older_messages:
+            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+            if isinstance(msg, (HumanMessage, AIMessage)):
+                summary_prompt += f"{role}: {msg.content}\n"
+                
+        summary_prompt += "\n\nReturn ONLY the concise summary text focusing on relevant context (location, crop, time period, unresolved queries)."
+        
+        response = llm.invoke(summary_prompt)
+        new_summary = response.content.strip()
+        
+        return {"messages": recent_messages, "summary": new_summary}
+        
+    return {"messages": messages}
+
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +374,7 @@ def node_generation(state: AgentState) -> dict:
 
 def router_after_guardrails(state: AgentState) -> str:
     """Conditional edge router after ``node_guardrails``."""
-    return "generation" if state.error else "classifier"
+    return "generation" if state.error else "tool_caller"
 
 
 def router_after_classifier(state: AgentState) -> str:
@@ -344,17 +401,18 @@ def router_after_tool_caller(state: AgentState) -> str:
 
 workflow = StateGraph(AgentState)
 workflow.add_node("guardrails",    node_guardrails)
-# workflow.add_node("classifier",    node_classifier)
 workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
 workflow.add_node("generation",    node_generation)
+workflow.add_node("memory_update", node_memory_update)
 
 workflow.add_edge(START, "guardrails")
 workflow.add_conditional_edges("guardrails",    router_after_guardrails)
-# workflow.add_conditional_edges("classifier",    router_after_classifier)
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
 
-workflow.add_edge("generation", END)
+workflow.add_edge("generation", "memory_update")
+workflow.add_edge("memory_update", END)
 
-compiled_graph = workflow.compile()
+memory = MemorySaver()
+compiled_graph = workflow.compile(checkpointer=memory)

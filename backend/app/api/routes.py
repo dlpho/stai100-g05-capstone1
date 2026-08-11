@@ -33,22 +33,19 @@ if ENABLE_MLFLOW:
 
 def run_agent(query: UserQuery) -> dict:
     """Hydrate conversation history and invoke the LangGraph agent."""
-    from langchain_core.messages import HumanMessage, AIMessage
-    config = {"configurable": {"thread_id": query.session_id}}
+    # We rely on LangGraph's internal MemorySaver for conversation history.
+    # We DO NOT map or inject query.history into the graph_input because 
+    # doing so would overwrite the persistent checkpointer state.
     
-    # Map input history list to LangChain message instances
-    messages = []
-    for msg in query.history or []:
-        if msg.role == "user":
-            messages.append(HumanMessage(content=msg.content))
-        elif msg.role == "assistant":
-            messages.append(AIMessage(content=msg.content))
+    # Ensure a valid thread_id for the MemorySaver
+    session_id = query.session_id if query.session_id else "default_session"
+    config = {"configurable": {"thread_id": session_id}}
             
     graph_input = {
         "user_query": query.user_query, 
         "waiting_for_location": False, 
-        "error": None,
-        "messages": messages
+        "error": None
+        # Omit 'messages' here so it inherits from the MemorySaver checkpoint
     }
     
     try:

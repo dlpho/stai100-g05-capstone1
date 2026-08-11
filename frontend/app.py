@@ -30,6 +30,9 @@ def page_chat():
         st.title(title)
         st.markdown("<div style='margin-top: -15px;'><i>Your all-in-one AI weather assistant!</i></div>", unsafe_allow_html=True)
     
+    import uuid
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -37,6 +40,8 @@ def page_chat():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            if message.get("error_detail"):
+                st.error(message["error_detail"], icon=":material/error:")
 
     # Pick up any pending quick-prompt from session state
     new_prompt = None
@@ -60,13 +65,14 @@ def page_chat():
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             error_detail = None
-            with st.spinner("Analyzing request and fetching weather telemetry..."):
+            with st.spinner("Analyzing your request..."):
                 try:
-                    full_history = st.session_state.messages[:-1]
-                    history = full_history[-MAX_HISTORY_MESSAGES:]
                     response = requests.post(
                         f"{BACKEND_URL}/api/chat",
-                        json={"user_query": new_prompt, "history": history},
+                        json={
+                            "user_query": new_prompt, 
+                            "session_id": st.session_state.session_id
+                        },
                         timeout=60
                     )
                     response.raise_for_status()
@@ -84,9 +90,12 @@ def page_chat():
                     
             message_placeholder.markdown(reply)
             if error_detail:
-                with st.expander("⚠️ Error details", expanded=False):
-                    st.code(error_detail, language="text")
-            st.session_state.messages.append({"role": "assistant", "content": reply})
+                st.error(error_detail, icon=":material/error:")
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": reply,
+                "error_detail": error_detail
+            })
             
         st.rerun()
 
@@ -156,7 +165,9 @@ def settings():
     st.markdown("#### Session Management")
     if st.button("Restart Session", use_container_width=True, type="primary"):
         st.session_state.messages = []
-        st.success("Chat history cleared!")
+        import uuid
+        st.session_state.session_id = str(uuid.uuid4())
+        st.success("Chat history cleared and new backend session started!")
         
 
 
