@@ -1,5 +1,11 @@
 """
 WeatherTato — Input Safety & Guardrails Utilities
+
+This module provides the core safety mechanisms for the chatbot. It is responsible for:
+1. PII Redaction: Sanitizing user inputs to protect privacy.
+2. Prompt Injection Detection: Preventing malicious overrides of system instructions.
+3. Scope Restriction (Regex): Quickly filtering out known unauthorized topics (e.g., farming advice).
+4. Topic Classification (LLM): Using an LLM to dynamically determine if a query is within answerable scope.
 """
 import re
 import json
@@ -8,7 +14,6 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 # Regex for simple PII matching, for redaction
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-# Philippine phone number pattern
 PHONE_REGEX = (
     r"(?<!\d)"
     r"(?:09\d{2}[\s-]?\d{3}[\s-]?\d{4}"
@@ -66,7 +71,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "what to plant",
     "when to plant",
     "where should i plant",
-
     # Irrigation / water management
     "should i irrigate",
     "should we irrigate",
@@ -76,7 +80,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "how often should i irrigate",
     "irrigation recommendation",
     "irrigation advice",
-
     # Fertilizer / soil management
     "what fertilizer should i use",
     "which fertilizer should i use",
@@ -85,7 +88,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "when to fertilize",
     "fertilizer recommendation",
     "fertilizer advice",
-
     # Pest / disease management
     "what pesticide should i use",
     "which pesticide should i use",
@@ -97,7 +99,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "pest control recommendation",
     "disease treatment",
     "pest treatment",
-
     # Harvesting decisions
     "should i harvest",
     "should we harvest",
@@ -105,7 +106,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "when to harvest",
     "harvesting recommendation",
     "harvesting advice",
-
     # Crop management / optimization
     "how can i increase my yield",
     "how do i increase my yield",
@@ -123,7 +123,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "crop management advice",
     "farming advice",
     "farming recommendation",
-
     # Direct decision-making
     "what should i do",
     "what should we do",
@@ -133,7 +132,6 @@ OUT_OF_SCOPE_PATTERNS = [
     "give me advice",
     "recommend what i should",
     "tell me what to do",
-
     # Weather forecasting
     "weather forecast",
     "weather prediction",
@@ -167,9 +165,21 @@ OUT_OF_SCOPE_PATTERNS = [
     "weather next month",
 ]
 
+
 def remove_pii(text: str) -> str:
-    """Remove PII from string."""
-    # Replace matching PII with placeholder tags
+    """
+    Redacts personally identifiable information (PII) from the input string.
+    
+    Uses regular expressions to identify and mask sensitive information 
+    such as email addresses, phone numbers, and names before processing.
+    
+    Args:
+        text (str): The raw input string from the user.
+        
+    Returns:
+        str: The sanitized string with PII replaced by placeholder tags.
+    """
+    # Replace matching PII with placeholder tags to prevent data leakage
     text = re.sub(EMAIL_REGEX, "[REDACTED-EMAIL]", text)
     text = re.sub(PHONE_REGEX, "[REDACTED-PHONENUMBER]", text)
     text = re.sub(NAME_REGEX, "[REDACTED-NAME]", text)
@@ -177,16 +187,38 @@ def remove_pii(text: str) -> str:
 
 
 def is_prompt_injection(text: str) -> bool:
-    """Detect whether text contains known prompt injection or jailbreak patterns."""
-    # Return True if text matches any injection phrase
+    """
+    Detects potential prompt injection or jailbreak attempts.
+    
+    Checks the input text against a predefined list of malicious phrases 
+    designed to override system instructions or bypass restrictions.
+    
+    Args:
+        text (str): The user's input string.
+        
+    Returns:
+        bool: True if an injection pattern is found, False otherwise.
+    """
     lower_text = text.lower()
     for pattern in INJECTION_PATTERNS:
         if pattern in lower_text:
             return True
     return False
 
+
 def is_out_of_scope(text: str) -> bool:
-    """Check whether text is out of scope."""
+    """
+    Identifies if a query requests actionable recommendations or forecasts.
+    
+    Matches the input against phrase-level patterns for topics that the 
+    system is not authorized to answer, such as farming advice or future weather.
+    
+    Args:
+        text (str): The user's input string.
+        
+    Returns:
+        bool: True if the text contains out-of-scope patterns, False otherwise.
+    """
     lower_text = text.lower()
     for word in OUT_OF_SCOPE_PATTERNS:
         if word in lower_text:
@@ -247,17 +279,23 @@ TOPIC_FEW_SHOT = [
     
 ]
 
+
 # ── 4. Classifier ─────────────────────────────────────────────────────────────
 def is_on_topic(user_message: str, llm, history: list = None) -> dict:
     """
     Evaluates whether the user's message is within the supported topics using an LLM.
     
+    This acts as a dynamic guardrail, utilizing a few-shot prompted LLM to classify 
+    the intent of the user. It enforces strict fallback rules to prevent the agent 
+    from answering off-topic or restricted queries.
+    
     Args:
-        user_message: The text of the user's query.
-        history: Optional list of previous conversation messages for context.
+        user_message (str): The text of the user's query.
+        llm: The LLM Model instance used for classification.
+        history (list, optional): Previous conversation messages for context.
         
     Returns:
-        A dictionary containing:
+        dict: A dictionary containing:
             - topic (str): The identified topic or 'UNKNOWN'.
             - allowed (bool): True if the query is answerable by the system.
             - confidence (float): The LLM's confidence score (0.0 to 1.0).
