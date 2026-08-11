@@ -5,8 +5,18 @@ import re
 
 # Regex for simple PII matching, for redaction
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-PHONE_REGEX = r"(?!\b\d{4}[- ]\d{2}[- ]\d{2}\b)(?!\b\d{2}[- ]\d{2}[- ]\d{4}\b)(\+?\d[\d -]{8,}\d)"
-NAME_REGEX = r"(?i)\b(?:my\s+name\s+is|i\s+am\s+named|i'm\s+named|this\s+is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b"
+# Philippine phone number pattern
+PHONE_REGEX = (
+    r"(?<!\d)"
+    r"(?:09\d{2}[\s-]?\d{3}[\s-]?\d{4}"
+    r"|\+639\d{2}[\s-]?\d{3}[\s-]?\d{4})"
+    r"(?!\d)"
+)
+NAME_REGEX = (
+    r"\b(?:my\s+name\s+is|i\s+am\s+named|i'm\s+named)"
+    r"\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b"
+)
+
 
 # Phrase-level prompt injection and jailbreak patterns, for detection
 # NOTE: avoid single-word patterns for false positives
