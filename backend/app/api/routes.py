@@ -2,6 +2,7 @@
 WeatherTato — API Route Handler
 """
 import logging
+import sqlite3
 from fastapi import APIRouter
 
 from models.schemas import UserQuery
@@ -10,6 +11,16 @@ from core.env import ENABLE_MLFLOW, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+def get_db():
+    conn = sqlite3.connect("data/weathertato.db", check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
 
 if ENABLE_MLFLOW:
     try:
@@ -23,6 +34,7 @@ if ENABLE_MLFLOW:
 def run_agent(query: UserQuery) -> dict:
     """Hydrate conversation history and invoke the LangGraph agent."""
     from langchain_core.messages import HumanMessage, AIMessage
+    config = {"configurable": {"thread_id": query.session_id}}
     
     # Map input history list to LangChain message instances
     messages = []
@@ -43,12 +55,12 @@ def run_agent(query: UserQuery) -> dict:
         if ENABLE_MLFLOW:
             try:
                 import mlflow
-                response = compiled_graph.invoke(graph_input)
+                response = compiled_graph.invoke(graph_input, config=config)
             except Exception as mlflow_err:
                 logger.error(f"MLflow tracing failed: {mlflow_err}. Executing graph invocation directly without MLflow.")
-                response = compiled_graph.invoke(graph_input)
+                response = compiled_graph.invoke(graph_input, config=config)
         else:
-            response = compiled_graph.invoke(graph_input)
+            response = compiled_graph.invoke(graph_input, config=config)
 
         return {
             "response": response.get("final_response"),
