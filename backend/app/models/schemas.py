@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any, Union
 
 class UserQuery(BaseModel):
     user_query: str
+    session_id: Optional[str] = None
 
 class LocationEntity(BaseModel):
     barangay: Optional[str] = ""
