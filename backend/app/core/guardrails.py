@@ -135,8 +135,9 @@ OUT_OF_SCOPE_PATTERNS = [
 
 def remove_pii(text: str) -> str:
     """Remove PII from string."""
+    # Replace matching PII with placeholder tags
     text = re.sub(EMAIL_REGEX, "[REDACTED-EMAIL]", text)
-    text = re.sub(PHONE_REGEX, "[REDACTED-PHONE]", text)
+    text = re.sub(PHONE_REGEX, "[REDACTED-PHONENUMBER]", text)
     text = re.sub(NAME_REGEX, "[REDACTED-NAME]", text)
     return text
 
