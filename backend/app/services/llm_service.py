@@ -8,11 +8,12 @@ from typing import Dict, Any
 
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
 from models.schemas import AgentState, LocationEntity
-from core.guardrails import detect_prompt_injection, remove_pii, requests_farming_advice, is_weather_related
+from core.guardrails import is_prompt_injection, is_out_of_scope, remove_pii, is_on_topic
 from services.meteo_service import get_weather_analytics, get_weather_forecast
 from services.location_search import search_location
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
@@ -25,110 +26,78 @@ llm = ChatOpenAI(
     temperature=0,
 )
 
-
 # ---------------------------------------------------------------------------
-# MODULE 6: GUARDRAILS NODE
+# GUARDRAILS NODE (MODULE 6)
+# - GUARD 1: apply PII redaction via regex patterns
+# - GUARD 2: detect prompt injection & out-of-scope queries via phrase matching
+# - GUARD 3: topic restriction via LLM + topic description
+# * see @core/guardrails.py for more information
 # ---------------------------------------------------------------------------
-
 def node_guardrails(state: AgentState) -> dict:
     """Node 1 — Safety guardrails applied to every incoming query."""
+
     query = state.user_query
+
+    # GUARD 1: redacting PII
     clean_query = remove_pii(query)
     
-    if detect_prompt_injection(clean_query):
-        return {"error": "Request blocked due to policy violation.", "user_query": clean_query}
+    # GUARD 2: detecting prompt injection & out-of-scope queries
+    if is_prompt_injection(clean_query):
+        return {"error": "Sorry, it seems your question may violate the system guidelines. Please rephrase your question.", "user_query": clean_query}
+    if is_out_of_scope(clean_query):
+        return {"error": "Sorry, I can provide weather and palay-related information, correlations, and model estimates, but I cannot recommend what actions to take.", "user_query": clean_query}
         
-    if not is_weather_related(clean_query) and not requests_farming_advice(clean_query):
-        pass
-        
-    if requests_farming_advice(clean_query):
-        return {"error": "I am a weather assistant and cannot provide farming, planting, or crop management advice.", "user_query": clean_query}
+    # GUARD 3: topic restriction (based on is_on_topic function)
+    result = is_on_topic(clean_query, llm, state.messages)
+    if result.get("fallback"):
+        return {"error": "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot provide advice, weather forecasts, or answer off-topic queries.", "user_query": clean_query}
         
     return {"user_query": clean_query}
+    
+# def node_classifier(state: AgentState) -> dict:
+#     """Node 2 — Few-shot intent classifier."""
+#     if state.error:
+#         return state
 
+#     # Build prompt from system instructions + few-shot examples
+#     intent_prompt = INTENT_SYSTEM_PROMPT + "\n\n### Examples:\n"
+#     for ex in FEW_SHOT_EXAMPLES:
+#         role = "User" if ex["role"] == "user" else "Assistant"
+#         intent_prompt += f"{role}: {ex['content']}\n"
 
-# ---------------------------------------------------------------------------
-# MODULE 1: PROMPT ENGINEERING (Few-Shot Classifier System Prompt)
-# MODULE 2: STRUCTURED OUTPUTS (Intent Classifier JSON)
-# ---------------------------------------------------------------------------
+#     # Inject conversation history so follow-up messages are classified in context
+#     if state.messages:
+#         intent_prompt += "\n### Conversation History:\n"
+#         for msg in state.messages:
+#             if isinstance(msg, SystemMessage):
+#                 continue
+#             role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+#             intent_prompt += f"{role}: {msg.content}\n"
 
-WEATHER_INTENTS = {
-    "analytics": "User wants historical weather data for past dates (e.g., 'What was the weather like in Cebu last year?', 'Give me the temperature on 2025-05-10')",
-    "forecast":  "User wants future weather predictions or forecasts (e.g., 'What is the forecast for Manila tomorrow?', 'Will it rain next week?')",
-    "general":   "User is asking general questions about what the assistant can do (e.g., 'What can you help me with?', 'How do I use this system?')",
-    "off-topic": "Anything unrelated to weather or the assistant (e.g., 'Who won the World Cup?', 'Write a python script')",
-}
+#     intent_prompt += f"\nUser: {state.user_query}\nAssistant: "
 
-_intents_str = "\n".join([f"- {k}: {v}" for k, v in WEATHER_INTENTS.items()])
+#     response = llm.invoke(intent_prompt)
+#     try:
+#         text = response.content
+#         md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+#         if md_match:
+#             text = md_match.group(1).strip()
+#         data = json.loads(text)
+#         intent = data.get("intent", "").lower()
+#         print("Classifier LLM JSON Result:", json.dumps(data, indent=2))
+#     except Exception as e:
+#         print(f"Failed to parse classifier intent JSON: {e}. Fallback to string search.")
+#         intent = "general"
+#         text_lower = response.content.lower()
+#         for key in WEATHER_INTENTS.keys():
+#             if key in text_lower:
+#                 intent = key
+#                 break
 
-INTENT_SYSTEM_PROMPT = (
-    "You are an intent classifier for a weather information assistant.\n\n"
-    "Classify the user's message into EXACTLY ONE of these intents:\n"
-    f"{_intents_str}\n\n"
-    "Respond with ONLY a JSON object in this exact format:\n"
-    '{"intent": "INTENT_NAME", "confidence": 0.95, "reasoning": "brief reason"}\n\n'
-    "Rules:\n"
-    "- intent must be one of the intent names above\n"
-    "- confidence is a float between 0 and 1\n"
-    "- choose the most likely intent if the message could fit multiple"
-)
+#     if intent not in ["analytics", "forecast", "general", "off-topic"]:
+#         intent = "general"
 
-FEW_SHOT_EXAMPLES = [
-    {"role": "user",      "content": "What is the forecast for Manila City tomorrow?"},
-    {"role": "assistant", "content": '{"intent": "forecast", "confidence": 0.98, "reasoning": "User explicitly wants a future weather forecast"}'},
-    {"role": "user",      "content": "Give me the temperature in Cebu on 2025-05-10."},
-    {"role": "assistant", "content": '{"intent": "analytics", "confidence": 0.96, "reasoning": "User is asking for weather data on a specific historical date"}'},
-    {"role": "user",      "content": "What can you help me with?"},
-    {"role": "assistant", "content": '{"intent": "general", "confidence": 0.97, "reasoning": "User is asking about the assistant\'s capabilities"}'},
-    {"role": "user",      "content": "Who won the World Cup in 2022?"},
-    {"role": "assistant", "content": '{"intent": "off-topic", "confidence": 0.95, "reasoning": "User asking a general question unrelated to weather"}'},
-]
-
-
-def node_classifier(state: AgentState) -> dict:
-    """Node 2 — Few-shot intent classifier."""
-    if state.error:
-        return state
-
-    # Build prompt from system instructions + few-shot examples
-    intent_prompt = INTENT_SYSTEM_PROMPT + "\n\n### Examples:\n"
-    for ex in FEW_SHOT_EXAMPLES:
-        role = "User" if ex["role"] == "user" else "Assistant"
-        intent_prompt += f"{role}: {ex['content']}\n"
-
-    # Inject conversation history so follow-up messages are classified in context
-    if state.messages:
-        intent_prompt += "\n### Conversation History:\n"
-        for msg in state.messages:
-            if isinstance(msg, SystemMessage):
-                continue
-            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-            intent_prompt += f"{role}: {msg.content}\n"
-
-    intent_prompt += f"\nUser: {state.user_query}\nAssistant: "
-
-    response = llm.invoke(intent_prompt)
-    try:
-        text = response.content
-        md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-        if md_match:
-            text = md_match.group(1).strip()
-        data = json.loads(text)
-        intent = data.get("intent", "").lower()
-        print("Classifier LLM JSON Result:", json.dumps(data, indent=2))
-    except Exception as e:
-        print(f"Failed to parse classifier intent JSON: {e}. Fallback to string search.")
-        intent = "general"
-        text_lower = response.content.lower()
-        for key in WEATHER_INTENTS.keys():
-            if key in text_lower:
-                intent = key
-                break
-
-    if intent not in ["analytics", "forecast", "general", "off-topic"]:
-        intent = "general"
-
-    return {"intent": intent}
+#     return {"intent": intent}
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +188,11 @@ def node_tool_caller(state: AgentState) -> dict:
     clean_history = [msg for msg in (state.messages or []) if not isinstance(msg, SystemMessage)]
 
     messages = [SystemMessage(content=system_instructions)]
+    
+    # Context Summary injection
+    if state.summary:
+        messages.append(SystemMessage(content=f"Previous Context Summary:\n{state.summary}"))
+        
     messages.extend(clean_history)
     if not (clean_history and isinstance(clean_history[-1], HumanMessage) and clean_history[-1].content == state.user_query):
         messages.append(HumanMessage(content=state.user_query))
@@ -338,9 +312,60 @@ def node_generation(state: AgentState) -> dict:
     if not (safe_history and isinstance(safe_history[-1], HumanMessage) and safe_history[-1].content == state.user_query):
         safe_history.append(HumanMessage(content=state.user_query))
 
-    messages = [SystemMessage(content=system_content)] + safe_history
+    messages = [SystemMessage(content=system_content)] 
+    
+    # Context Summary injection
+    if state.summary:
+        messages.append(SystemMessage(content=f"Previous Context Summary:\n{state.summary}"))
+        
+    messages.extend(safe_history)
     response = llm.invoke(messages)
-    return {"final_response": response.content}
+    
+    # Append the AI response to the state messages so it is remembered in the sliding window buffer
+    final_messages = list(state.messages or [])
+    if not (final_messages and isinstance(final_messages[-1], HumanMessage) and final_messages[-1].content == state.user_query):
+        final_messages.append(HumanMessage(content=state.user_query))
+    final_messages.append(AIMessage(content=response.content))
+    
+    return {"final_response": response.content, "messages": final_messages}
+
+# ---------------------------------------------------------------------------
+# MODULE: MEMORY — Context Summarization & Sliding Window
+# ---------------------------------------------------------------------------
+
+def node_memory_update(state: AgentState) -> dict:
+    """Node 6 — Updates the sliding window and summarizes older messages."""
+    if state.error:
+        return state
+
+    messages = list(state.messages or [])
+    
+    # Keep the recent 10 messages in the sliding window buffer
+    # If the buffer has more than 10 messages, summarize the older ones
+    if len(messages) > 10:
+        older_messages = messages[:-10]
+        recent_messages = messages[-10:]
+        
+        # Build prompt to summarize older messages
+        summary_prompt = "Summarize the key information from these past conversation messages."
+        if state.summary:
+            summary_prompt += f"\n\nExisting Summary:\n{state.summary}\n\nIncorporate the existing summary into your new summary."
+            
+        summary_prompt += "\n\nNew Messages to Summarize:\n"
+        for msg in older_messages:
+            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+            if isinstance(msg, (HumanMessage, AIMessage)):
+                summary_prompt += f"{role}: {msg.content}\n"
+                
+        summary_prompt += "\n\nReturn ONLY the concise summary text focusing on relevant context (location, crop, time period, unresolved queries)."
+        
+        response = llm.invoke(summary_prompt)
+        new_summary = response.content.strip()
+        
+        return {"messages": recent_messages, "summary": new_summary}
+        
+    return {"messages": messages}
+
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +374,7 @@ def node_generation(state: AgentState) -> dict:
 
 def router_after_guardrails(state: AgentState) -> str:
     """Conditional edge router after ``node_guardrails``."""
-    return "generation" if state.error else "classifier"
+    return "generation" if state.error else "tool_caller"
 
 
 def router_after_classifier(state: AgentState) -> str:
@@ -376,17 +401,18 @@ def router_after_tool_caller(state: AgentState) -> str:
 
 workflow = StateGraph(AgentState)
 workflow.add_node("guardrails",    node_guardrails)
-workflow.add_node("classifier",    node_classifier)
 workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
 workflow.add_node("generation",    node_generation)
+workflow.add_node("memory_update", node_memory_update)
 
 workflow.add_edge(START, "guardrails")
 workflow.add_conditional_edges("guardrails",    router_after_guardrails)
-workflow.add_conditional_edges("classifier",    router_after_classifier)
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
 
-workflow.add_edge("generation", END)
+workflow.add_edge("generation", "memory_update")
+workflow.add_edge("memory_update", END)
 
-compiled_graph = workflow.compile()
+memory = MemorySaver()
+compiled_graph = workflow.compile(checkpointer=memory)

@@ -46,3 +46,4 @@ class AgentState(BaseModel):
     waiting_for_location: bool = False
     messages: Optional[List[Any]] = Field(default_factory=list)
     tool_calls: Optional[List[Any]] = Field(default_factory=list)
+    summary: Optional[str] = ""
