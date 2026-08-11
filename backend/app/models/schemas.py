@@ -17,7 +17,7 @@ class UserQuery(BaseModel):
     """Request body for the ``POST /api/chat`` endpoint."""
     user_query: str
     history: Optional[List[MessageDict]] = []
-
+    session_id: Optional[str] = None
 
 class LocationEntity(BaseModel):
     """A resolved location entity with geographic coordinates."""
