@@ -2,6 +2,9 @@
 WeatherTato — Input Safety & Guardrails Utilities
 """
 import re
+import json
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+
 
 # Regex for simple PII matching, for redaction
 EMAIL_REGEX = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
@@ -14,9 +17,7 @@ PHONE_REGEX = (
 )
 NAME_REGEX = (
     r"\b(?:my\s+name\s+is|i\s+am\s+named|i'm\s+named)"
-    r"\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b"
 )
-
 
 # Phrase-level prompt injection and jailbreak patterns, for detection
 # NOTE: avoid single-word patterns for false positives
@@ -50,6 +51,7 @@ INJECTION_PATTERNS = [
     "you are now dan",
     "system override"
 ]
+
 # Phrase-level out-of-scope patterns, for detection
 # NOTE: actionable recommendations are out of scope
 OUT_OF_SCOPE_PATTERNS = [
@@ -159,12 +161,125 @@ def is_out_of_scope(text: str) -> bool:
             return True
     return False
 
-# def is_weather_related(text: str) -> bool:
-#     """Check whether text contains at least one weather-related keyword."""
-#     lower_text = text.lower()
-#     for word in WEATHER_KEYWORDS:
-#         if word in lower_text:
-#             return True
-#     return False
 
+# TOPIC CLASSIFIER / RESTRICTION
 
+# ── 1. Define Allowed Topics ──────────────────────────────────────────────────
+TOPICS = {
+    "WEATHER": "Questions about historical or current weather conditions and weather variables.",
+    "CROP": "Questions about palay (rice) or corn yield or price.",
+    "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay or corn yield or price.",
+    # Out of scope
+    "ADVICE": "Requests for farming recommendations or actions, such as planting, irrigation, fertilizer, pesticides, or harvesting.",
+    "OFF_TOPIC": "Questions unrelated to weather, palay, corn, yield, price, or their relationships."
+}
+
+# ── 2. System Prompt ──────────────────────────────────────────────────────────
+
+TOPIC_SYSTEM_PROMPT = (
+    "You are a topic classifier for a weather and agricultural information chatbot.\n\n"
+    "Classify the user's message into EXACTLY ONE of these topics:\n"
+    + "\n".join(f"- {topic}: {definition}" for topic, definition in TOPICS.items()) 
+    + "\n\nOutput ONLY a JSON object in the exact format:\n"
+    '{"topic": "TOPIC_NAME", "allowed": true, "confidence": 0.95}\n\n'
+
+    "Rules:\n"
+    "- topic must be one of the topic names above\n"
+    "- allowed is true only for WEATHER, CROP, and RELATIONSHIP; false for ADVICE and OFF_TOPIC\n"
+    "- confidence is a float between 0 and 1\n"
+    "- classify based on the user's actual request, not individual keywords\n"
+    "- use conversation history when necessary to understand a follow-up question"
+)
+
+# ── 3. Few-Shot Examples ──────────────────────────────────────────────────────
+TOPIC_FEW_SHOT = [
+    {"role": "user",      "content": "How much rain did Pampanga receive last quarter?"},
+    {"role": "assistant", "content": '{"topic": "WEATHER", "allowed": true, "confidence": 0.98}'},
+
+    {"role": "user",      "content": "What was the palay yield in Pampanga in Q3 2025?"},
+    {"role": "assistant", "content": '{"topic": "CROP", "allowed": true, "confidence": 0.98}'},
+
+    {"role": "user",      "content": "What is the correlation between rainfall and palay yield in Pampanga?"},
+    {"role": "assistant", "content": '{"topic": "RELATIONSHIP", "allowed": true, "confidence": 0.98}'},
+
+    {"role": "user",      "content": "Should I apply more fertilizer now because rainfall was low?"},
+    {"role": "assistant", "content": '{"topic": "ADVICE", "allowed": false, "confidence": 0.98}'},
+
+    {"role": "user",      "content": "Who won the World Cup in 2022?"},
+    {"role": "assistant", "content": '{"topic": "OFF_TOPIC", "allowed": false, "confidence": 1.00}'},
+]
+
+# ── 4. Classifier ─────────────────────────────────────────────────────────────
+def is_on_topic(user_message: str, llm, history: list = None) -> dict:
+    """
+    Evaluates whether the user's message is within the supported topics using an LLM.
+    
+    Args:
+        user_message: The text of the user's query.
+        history: Optional list of previous conversation messages for context.
+        
+    Returns:
+        A dictionary containing:
+            - topic (str): The identified topic or 'UNKNOWN'.
+            - allowed (bool): True if the query is answerable by the system.
+            - confidence (float): The LLM's confidence score (0.0 to 1.0).
+            - fallback (bool): True if the system should trigger a safe fallback response.
+    """
+    messages = [SystemMessage(content=TOPIC_SYSTEM_PROMPT)]
+    
+    # Append few-shot examples to guide the LLM's expected output format
+    for ex in TOPIC_FEW_SHOT:
+        if ex["role"] == "user":
+            messages.append(HumanMessage(content=ex["content"]))
+        else:
+            messages.append(AIMessage(content=ex["content"]))
+            
+    # Incorporate recent conversation history (last 4 messages) for context
+    if history:
+        for msg in history[-4:]:
+            if isinstance(msg, HumanMessage) or isinstance(msg, AIMessage):
+                messages.append(msg)
+                
+    # Ensure the current user query is at the end of the message list
+    if not history or not (isinstance(history[-1], HumanMessage) and history[-1].content == user_message):
+        messages.append(HumanMessage(content=user_message))
+        
+    try:
+        # Invoke the LLM to classify the topic
+        response = llm.invoke(messages)
+        text = response.content
+        
+        # Extract the JSON block from the LLM's response
+        match = re.search(r'\{.*?\}', text, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON found")
+        result = json.loads(match.group())
+        
+        # Parse the extracted JSON fields
+        topic = result.get("topic", "UNKNOWN")
+        allowed = result.get("allowed", False)
+        confidence = result.get("confidence", 0.0)
+        
+        # Normalize unknown or unsupported topics
+        if topic not in TOPICS and topic != "AGRICULTURAL_ADVICE":
+            topic = "UNKNOWN"
+            
+        # Apply strict fallback rules according to the condition table
+        # Fallback if confidence is too low
+        if confidence < 0.5:
+            return {"topic": "UNKNOWN", "allowed": False, "confidence": confidence, "fallback": True}
+            
+        # Fallback if the topic is explicitly restricted (e.g., farming advice or completely off-topic)
+        if topic in ["ADVICE", "AGRICULTURAL_ADVICE", "OFF_TOPIC", "UNKNOWN"]:
+            return {"topic": topic, "allowed": False, "confidence": confidence, "fallback": True}
+            
+        # Fallback if the LLM flagged it as not allowed
+        if not allowed:
+            return {"topic": topic, "allowed": False, "confidence": confidence, "fallback": True}
+            
+        # Query is valid and supported
+        return {"topic": topic, "allowed": True, "confidence": confidence, "fallback": False}
+        
+    except Exception:
+        # Safe fallback triggered on API failure or JSON parsing errors
+        return {"topic": "UNKNOWN", "allowed": False, "confidence": 0.0, "fallback": True}
