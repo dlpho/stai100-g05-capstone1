@@ -80,14 +80,7 @@ MLFLOW_EXPERIMENT_NAME=WeatherTato
 ```
 
 ### 5. Run Program
-
-**Option A — Quick Start (Recommended):** Starts MLflow, FastAPI, and Streamlit together:
-```bash
-python run.py
-```
-*Terminating this command (`Ctrl+C`) automatically shuts down all background processes.*
-
-**Option B — Manual Startup** (3 separate terminals, each with `.venv312` activated):
+ (3 separate terminals, each with `.venv312` activated):
 
 | Terminal | Command | URL |
 | :--- | :--- | :--- |
