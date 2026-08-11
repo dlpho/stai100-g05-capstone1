@@ -53,7 +53,7 @@ INJECTION_PATTERNS = [
 ]
 
 # Phrase-level out-of-scope patterns, for detection
-# NOTE: actionable recommendations are out of scope
+# NOTE: actionable recommendations and weather forecasting are out of scope
 OUT_OF_SCOPE_PATTERNS = [
     # Planting / crop selection
     "should i plant",
@@ -133,6 +133,38 @@ OUT_OF_SCOPE_PATTERNS = [
     "give me advice",
     "recommend what i should",
     "tell me what to do",
+
+    # Weather forecasting
+    "weather forecast",
+    "weather prediction",
+    "weather predictions",
+    "forecast the weather",
+    "predict the weather",
+    "predict weather",
+    "what will the weather be like",
+    "what will the weather look like",
+    "what is the weather going to be like",
+    "what is the weather going to look like",
+    "what will the weather be",
+    "what is the weather expected to be",
+    "what weather can we expect",
+    "what weather should we expect",
+    "what weather is expected",
+    "what are the expected weather conditions",
+    "will it rain",
+    "is it going to rain",
+    "is there going to be rain",
+    "will there be rain",
+    "will it be sunny",
+    "will it be hot",
+    "will it be cold",
+    "will there be a storm",
+    "is there a storm coming",
+    "is a typhoon coming",
+    "will a typhoon hit",
+    "weather tomorrow",
+    "weather next week",
+    "weather next month",
 ]
 
 def remove_pii(text: str) -> str:
@@ -170,6 +202,7 @@ TOPICS = {
     "CROP": "Questions about palay (rice) or corn yield or price.",
     "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay or corn yield or price.",
     # Out of scope (allowed=false)
+    "FORECAST": "Requests for weather forecasts or weather-related predictions about future weather conditions.",
     "ADVICE": "Requests for farming recommendations or actions, such as planting, irrigation, fertilizer, pesticides, or harvesting.",
     "OFF_TOPIC": "Questions unrelated to weather, palay, corn, yield, price, or their relationship - unrelated topics like sports, food, entertainment, math, personal questions, etc."
 }
@@ -185,7 +218,7 @@ TOPIC_SYSTEM_PROMPT = (
 
     "Rules:\n"
     "- topic must be one of the topic names above\n"
-    "- allowed is true only for WEATHER, CROP, and RELATIONSHIP; false for ADVICE and OFF_TOPIC\n"
+    "- allowed is true only for WEATHER, CROP, and RELATIONSHIP; false for ADVICE, FORECAST, and OFF_TOPIC\n"
     "- confidence is a float between 0 and 1\n"
     "- classify based on the user's actual request, not individual keywords\n"
     "- use conversation history when necessary to understand a follow-up question"
@@ -207,6 +240,11 @@ TOPIC_FEW_SHOT = [
 
     {"role": "user",      "content": "Who won the World Cup in 2022?"},
     {"role": "assistant", "content": '{"topic": "OFF_TOPIC", "allowed": false, "confidence": 1.00}'},
+
+    {"role": "user",      "content": "What is the weather gonna be like in Bacoor next week?"},
+    {"role": "assistant", "content": '{"topic": "FORECAST", "allowed": false, "confidence": 0.99}'},
+
+    
 ]
 
 # ── 4. Classifier ─────────────────────────────────────────────────────────────

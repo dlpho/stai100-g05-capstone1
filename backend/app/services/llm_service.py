@@ -49,7 +49,7 @@ def node_guardrails(state: AgentState) -> dict:
     # GUARD 3: topic restriction (based on is_on_topic function)
     result = is_on_topic(clean_query, llm, state.messages)
     if result.get("fallback"):
-        return {"error": "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot provide recommendations or answer off-topic queries.", "user_query": clean_query}
+        return {"error": "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot provide advice, weather forecasts, or answer off-topic queries.", "user_query": clean_query}
         
     return {"user_query": clean_query}
     
@@ -351,7 +351,7 @@ workflow.add_node("generation",    node_generation)
 
 workflow.add_edge(START, "guardrails")
 workflow.add_conditional_edges("guardrails",    router_after_guardrails)
-workflow.add_conditional_edges("classifier",    router_after_classifier)
+# workflow.add_conditional_edges("classifier",    router_after_classifier)
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
 
