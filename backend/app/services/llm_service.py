@@ -12,7 +12,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
 from models.schemas import AgentState, LocationEntity
-from core.guardrails import detect_prompt_injection, remove_pii, requests_farming_advice, is_weather_related
+from core.guardrails import detect_prompt_injection, remove_pii
 from services.meteo_service import get_weather_analytics, get_weather_forecast
 from services.location_search import search_location
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
@@ -36,13 +36,13 @@ def node_guardrails(state: AgentState) -> dict:
     clean_query = remove_pii(query)
     
     if detect_prompt_injection(clean_query):
-        return {"error": "Request blocked due to policy violation.", "user_query": clean_query}
+        return {"error": "Sorry, it seems your question may violate the system guidelines. Please rephrase your question.", "user_query": clean_query}
         
-    if not is_weather_related(clean_query) and not requests_farming_advice(clean_query):
-        pass
+    # if not is_weather_related(clean_query) and not requests_farming_advice(clean_query):
+    #     pass
         
-    if requests_farming_advice(clean_query):
-        return {"error": "I am a weather assistant and cannot provide farming, planting, or crop management advice.", "user_query": clean_query}
+    # if requests_farming_advice(clean_query):
+    #     return {"error": "I am a weather assistant and cannot provide farming, planting, or crop management advice.", "user_query": clean_query}
         
     return {"user_query": clean_query}
 
