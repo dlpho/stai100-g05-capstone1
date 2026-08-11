@@ -40,6 +40,88 @@ INJECTION_PATTERNS = [
     "you are now dan",
     "system override"
 ]
+# Phrase-level out-of-scope patterns, for detection
+# NOTE: actionable recommendations are out of scope
+OUT_OF_SCOPE_PATTERNS = [
+    # Planting / crop selection
+    "should i plant",
+    "should we plant",
+    "when should i plant",
+    "when should we plant",
+    "what should i plant",
+    "what crop should i plant",
+    "which crop should i plant",
+    "what to plant",
+    "when to plant",
+    "where should i plant",
+
+    # Irrigation / water management
+    "should i irrigate",
+    "should we irrigate",
+    "when should i irrigate",
+    "when to irrigate",
+    "how much water should i use",
+    "how often should i irrigate",
+    "irrigation recommendation",
+    "irrigation advice",
+
+    # Fertilizer / soil management
+    "what fertilizer should i use",
+    "which fertilizer should i use",
+    "how much fertilizer should i use",
+    "when should i fertilize",
+    "when to fertilize",
+    "fertilizer recommendation",
+    "fertilizer advice",
+
+    # Pest / disease management
+    "what pesticide should i use",
+    "which pesticide should i use",
+    "what insecticide should i use",
+    "which insecticide should i use",
+    "how should i treat",
+    "how do i treat",
+    "how to treat",
+    "pest control recommendation",
+    "disease treatment",
+    "pest treatment",
+
+    # Harvesting decisions
+    "should i harvest",
+    "should we harvest",
+    "when should i harvest",
+    "when to harvest",
+    "harvesting recommendation",
+    "harvesting advice",
+
+    # Crop management / optimization
+    "how can i increase my yield",
+    "how do i increase my yield",
+    "how to increase my yield",
+    "how can i improve my yield",
+    "how do i improve my yield",
+    "how to improve my yield",
+    "how can i maximize my yield",
+    "how do i maximize my yield",
+    "how to maximize my yield",
+    "what should i do to increase yield",
+    "what should i do to improve yield",
+    "what should i do to protect my crop",
+    "how should i manage my crop",
+    "crop management advice",
+    "farming advice",
+    "farming recommendation",
+
+    # Direct decision-making
+    "what should i do",
+    "what should we do",
+    "what do you recommend",
+    "what would you recommend",
+    "give me a recommendation",
+    "give me advice",
+    "recommend what i should",
+    "tell me what to do",
+]
 
 def remove_pii(text: str) -> str:
     """Remove PII from string."""
@@ -49,7 +131,7 @@ def remove_pii(text: str) -> str:
     return text
 
 
-def detect_prompt_injection(text: str) -> bool:
+def is_prompt_injection(text: str) -> bool:
     """Detect whether text contains known prompt injection or jailbreak patterns."""
     # Return True if text matches any injection phrase
     lower_text = text.lower()
@@ -58,6 +140,13 @@ def detect_prompt_injection(text: str) -> bool:
             return True
     return False
 
+def is_out_of_scope(text: str) -> bool:
+    """Check whether text is out of scope."""
+    lower_text = text.lower()
+    for word in OUT_OF_SCOPE_PATTERNS:
+        if word in lower_text:
+            return True
+    return False
 
 # def is_weather_related(text: str) -> bool:
 #     """Check whether text contains at least one weather-related keyword."""
@@ -68,10 +157,3 @@ def detect_prompt_injection(text: str) -> bool:
 #     return False
 
 
-# def requests_farming_advice(text: str) -> bool:
-#     """Check whether text requests agronomic or farming advice."""
-#     lower_text = text.lower()
-#     for word in FARMING_ADVICE_KEYWORDS:
-#         if word in lower_text:
-#             return True
-#     return False
