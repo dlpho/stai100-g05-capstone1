@@ -2,7 +2,7 @@
 WeatherTato — Pydantic Data Models & Schema Definitions
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Union
+from typing import Optional, List, Any, Union, Literal
 
 
 # MODULE 2 - STRUCTURED OUTPUTS (PYDANTIC)
@@ -29,10 +29,35 @@ class LocationEntity(BaseModel):
     longitude: Optional[str] = ""
 
 
+class TimePeriod(BaseModel):
+    """Extracted time period."""
+    granularity: Optional[Literal["QUARTER", "YEAR", "MONTH"]] = None
+    value: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+class ExtractedSlots(BaseModel):
+    """Extracted slots from the user query."""
+    location: Optional[str] = None
+    time_period: Optional[TimePeriod] = None
+    weather_variables: Optional[List[Literal["RAINFALL", "MEAN_TEMP", "MAX_TEMP", "MIN_TEMP", "WIND_GUST", "SOIL_MOISTURE"]]] = Field(default_factory=list)
+    crop_type: Optional[Literal["PALAY", "CORN"]] = None
+    outcome_metric: Optional[Literal["YIELD", "PRODUCTION", "PRICE"]] = None
+
+
+class TaskExtraction(BaseModel):
+    """Task and slot extraction structured output."""
+    action: Literal["GET_WEATHER_DATA", "GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_OUTCOME", "DESCRIBE_CAPABILITIES", "UNKNOWN"]
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    slots: ExtractedSlots
+
+
 class AgentState(BaseModel):
     """LangGraph state object shared across all 5 pipeline nodes."""
     user_query: str
     intent: Optional[str] = None
+    topic: Optional[str] = None
     location: Optional[LocationEntity] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -47,3 +72,9 @@ class AgentState(BaseModel):
     messages: Optional[List[Any]] = Field(default_factory=list)
     tool_calls: Optional[List[Any]] = Field(default_factory=list)
     summary: Optional[str] = ""
+
+    # Task + Slot Extraction Fields
+    active_action: Optional[str] = None
+    slots: Optional[dict] = Field(default_factory=dict)
+    missing_slots: Optional[List[str]] = Field(default_factory=list)
+    is_ready_for_tools: bool = False

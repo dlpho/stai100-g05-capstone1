@@ -12,8 +12,15 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from models.schemas import AgentState, LocationEntity
+from models.schemas import AgentState, LocationEntity, TaskExtraction
 from core.guardrails import is_prompt_injection, is_out_of_scope, remove_pii, is_on_topic
+from core.prompts import (
+    build_slot_system_prompt,
+    build_clarification_prompt,
+    build_tool_caller_prompt,
+    build_memory_summary_prompt,
+    GENERATION_PROMPT,
+)
 from services.meteo_service import get_weather_analytics, get_weather_forecast
 from services.location_search import search_location
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
@@ -27,7 +34,7 @@ llm = ChatOpenAI(
 )
 
 # ---------------------------------------------------------------------------
-# GUARDRAILS NODE (MODULE 6)
+# GUARDRAILS NODE (MODULE 4)
 # - GUARD 1: apply PII redaction via regex patterns
 # - GUARD 2: detect prompt injection & out-of-scope queries via phrase matching
 # - GUARD 3: topic restriction via LLM + topic description
@@ -49,55 +56,156 @@ def node_guardrails(state: AgentState) -> dict:
         
     # GUARD 3: topic restriction (based on is_on_topic function)
     result = is_on_topic(clean_query, llm, state.messages)
+    topic = result.get("topic", "UNKNOWN")
     if result.get("fallback"):
-        return {"error": "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot provide advice, weather forecasts, or answer off-topic queries.", "user_query": clean_query}
-        
-    return {"user_query": clean_query}
+        if topic == "FORECAST":
+            msg = "I can only analyze historical weather data and past correlations. I cannot provide future weather forecasts."
+        elif topic == "ADVICE":
+            msg = "I can provide data analysis, but I cannot give direct farming advice or crop recommendations."
+        else:
+            msg = "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot answer off-topic queries."
+        return {"error": msg, "user_query": clean_query, "topic": topic}
+    return {"user_query": clean_query, "topic": topic}
+
+
+# ---------------------------------------------------------------------------
+# TASK + SLOT EXTRACTION NODE (MODULE 2)
+# ---------------------------------------------------------------------------
+
+def node_task_extraction(state: AgentState) -> dict:
+    """Node 2 — Extracts task and slots from the user query."""
+    if state.error:
+        return {}
+
+    topic = state.topic
+    # Deterministically choose allowed actions based on topic
+    if topic == "WEATHER":
+        allowed_actions = ["GET_WEATHER_DATA", "DESCRIBE_CAPABILITIES"]
+    elif topic in ["CROP", "CROP_OUTCOMES"]:
+        allowed_actions = ["GET_CROP_DATA", "PREDICT_OUTCOME", "DESCRIBE_CAPABILITIES"]
+    elif topic in ["RELATIONSHIP", "WEATHER_CROP_RELATIONSHIP"]:
+        allowed_actions = ["ANALYZE_CORRELATION", "PREDICT_OUTCOME", "DESCRIBE_CAPABILITIES"]
+    elif topic == "GENERAL":
+        allowed_actions = ["DESCRIBE_CAPABILITIES"]
+    else:
+        allowed_actions = ["UNKNOWN"]
     
-# def node_classifier(state: AgentState) -> dict:
-#     """Node 2 — Few-shot intent classifier."""
-#     if state.error:
-#         return state
+    SLOT_SYSTEM_PROMPT = build_slot_system_prompt(topic, allowed_actions, state.user_query)
 
-#     # Build prompt from system instructions + few-shot examples
-#     intent_prompt = INTENT_SYSTEM_PROMPT + "\n\n### Examples:\n"
-#     for ex in FEW_SHOT_EXAMPLES:
-#         role = "User" if ex["role"] == "user" else "Assistant"
-#         intent_prompt += f"{role}: {ex['content']}\n"
+    messages = [SystemMessage(content=SLOT_SYSTEM_PROMPT)]
+    if state.messages:
+        for msg in state.messages[-4:]:
+            if isinstance(msg, HumanMessage) or isinstance(msg, AIMessage):
+                messages.append(msg)
+    messages.append(HumanMessage(content=state.user_query))
 
-#     # Inject conversation history so follow-up messages are classified in context
-#     if state.messages:
-#         intent_prompt += "\n### Conversation History:\n"
-#         for msg in state.messages:
-#             if isinstance(msg, SystemMessage):
-#                 continue
-#             role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-#             intent_prompt += f"{role}: {msg.content}\n"
+    try:
+        response = llm.invoke(messages)
+        text = response.content.strip()
+        md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+        if md_match:
+            text = md_match.group(1).strip()
+        # Find the first JSON object in the response
+        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if not json_match:
+            raise ValueError("No JSON object found in extraction response")
+        data = json.loads(json_match.group())
+        
+        extraction_result = TaskExtraction(**data)
+        confidence = extraction_result.confidence
+        print(f"Extraction confidence: {confidence:.2f}")
+        
+        # Low-confidence fallback — treat as UNKNOWN and request clarification
+        if confidence < 0.5:
+            return {
+                "active_action": "UNKNOWN",
+                "slots": dict(state.slots or {}),
+                "missing_slots": ["clarification"],
+                "is_ready_for_tools": False
+            }
+        
+        # Extract new slots
+        if hasattr(extraction_result.slots, "model_dump"):
+            new_slots = extraction_result.slots.model_dump(exclude_none=True)
+        else:
+            new_slots = extraction_result.slots.dict(exclude_none=True)
+            
+        action = extraction_result.action
+    except Exception as e:
+        print(f"Extraction failed: {e}")
+        return {"error": "Failed to extract required information from your query."}
 
-#     intent_prompt += f"\nUser: {state.user_query}\nAssistant: "
+    # Define which slots to retain based on the active action
+    allowed_slots_for_action = {
+        "GET_WEATHER_DATA": {"location", "time_period", "weather_variables"},
+        "GET_CROP_DATA": {"location", "time_period", "crop_type", "outcome_metric"},
+        "ANALYZE_CORRELATION": {"location", "time_period", "weather_variables", "crop_type", "outcome_metric"},
+        "PREDICT_OUTCOME": {"location", "time_period", "weather_variables", "crop_type", "outcome_metric"},
+    }.get(action, set())
 
-#     response = llm.invoke(intent_prompt)
-#     try:
-#         text = response.content
-#         md_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-#         if md_match:
-#             text = md_match.group(1).strip()
-#         data = json.loads(text)
-#         intent = data.get("intent", "").lower()
-#         print("Classifier LLM JSON Result:", json.dumps(data, indent=2))
-#     except Exception as e:
-#         print(f"Failed to parse classifier intent JSON: {e}. Fallback to string search.")
-#         intent = "general"
-#         text_lower = response.content.lower()
-#         for key in WEATHER_INTENTS.keys():
-#             if key in text_lower:
-#                 intent = key
-#                 break
+    # Inherit only the slots relevant to the new action
+    current_slots = {k: v for k, v in (state.slots or {}).items() if k in allowed_slots_for_action}
+    
+    if "time_period" in new_slots and "time_period" in allowed_slots_for_action:
+        current_slots["time_period"] = new_slots["time_period"]
+        
+    for k, v in new_slots.items():
+        if k in allowed_slots_for_action and k != "time_period" and v is not None:
+            if isinstance(v, list) and not v:
+                continue # don't overwrite with empty list
+            current_slots[k] = v
 
-#     if intent not in ["analytics", "forecast", "general", "off-topic"]:
-#         intent = "general"
+    missing_slots = []
+    if action == "GET_WEATHER_DATA":
+        required = ["location", "time_period", "weather_variables"]
+    elif action == "GET_CROP_DATA":
+        required = ["location", "time_period", "crop_type", "outcome_metric"]
+    elif action == "ANALYZE_CORRELATION":
+        required = ["location", "time_period", "weather_variables", "crop_type", "outcome_metric"]
+    elif action == "PREDICT_OUTCOME":
+        required = ["location", "time_period", "crop_type"]
+    elif action == "DESCRIBE_CAPABILITIES" or action == "UNKNOWN":
+        required = []
+    else:
+        required = []
 
-#     return {"intent": intent}
+    for req in required:
+        val = current_slots.get(req)
+        if not val:
+            missing_slots.append(req)
+        elif req == "weather_variables" and isinstance(val, list) and len(val) == 0:
+            missing_slots.append(req)
+            
+    is_ready = len(missing_slots) == 0
+
+    return {
+        "active_action": action,
+        "slots": current_slots,
+        "missing_slots": missing_slots,
+        "is_ready_for_tools": is_ready
+    }
+
+
+def node_clarification(state: AgentState) -> dict:
+    """Node for clarifying missing slots."""
+    if not state.missing_slots:
+        return {}
+    
+    clarification_system = build_clarification_prompt(state.active_action, state.missing_slots)
+    messages = [SystemMessage(content=clarification_system)]
+    if state.messages and isinstance(state.messages[-1], HumanMessage):
+        messages.append(state.messages[-1])
+    else:
+        messages.append(HumanMessage(content=state.user_query))
+        
+    response = llm.invoke(messages)
+    
+    final_messages = list(state.messages or [])
+    if not (final_messages and isinstance(final_messages[-1], HumanMessage) and final_messages[-1].content == state.user_query):
+        final_messages.append(HumanMessage(content=state.user_query))
+    final_messages.append(AIMessage(content=response.content))
+    
+    return {"final_response": response.content, "messages": final_messages}
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +267,16 @@ def get_weather_forecast_tool(location: str, daily_vars: list[str]) -> str:
 
 def node_tool_caller(state: AgentState) -> dict:
     """Node 3 — ReAct Reason step: LLM decides which tools to call."""
-    if state.error or state.intent not in ["analytics", "forecast"]:
+    if state.error or not state.is_ready_for_tools or state.active_action == "DESCRIBE_CAPABILITIES":
         return state
+
+    # Gracefully bypass tool calling for unimplemented DS actions
+    if state.active_action in ["GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_OUTCOME"]:
+        mock_msg = (
+            f"[SYSTEM NOTE: The backend data tools for {state.active_action} are not yet implemented. "
+            f"The extraction node successfully gathered these slots: {json.dumps(state.slots)}.]"
+        )
+        return {"weather_data_markdown": mock_msg, "tool_calls": [], "waiting_for_location": False}
 
     today_dt = datetime.datetime.now()
     today_str = today_dt.strftime("%Y-%m-%d")
@@ -169,21 +285,7 @@ def node_tool_caller(state: AgentState) -> dict:
     tools = [get_weather_analytics_tool, get_weather_forecast_tool]
     llm_with_tools = llm.bind_tools(tools)
 
-    system_instructions = (
-        f"Today's Date: {today_str} ({weekday_str}).\n"
-        f"The user intent is: {state.intent}\n\n"
-        "Rules:\n"
-        "1. Convert all time periods to exact YYYY-MM-DD formats.\n"
-        "2. Resolve relative dates ('yesterday', 'last month') relative to today's date.\n"
-        "3. If historical, dates cannot exceed today. Cap them at yesterday.\n"
-        "4. Today is in the year 2026. Therefore, any date in 2024 or 2025 is in the past. You must call get_weather_analytics_tool for these past dates.\n"
-        "5. If a query asks for weather on a single specific day in the past, set BOTH start_date and end_date to that same day in YYYY-MM-DD format.\n"
-        "6. You must invoke the tools when you have the location and dates. Do not answer directly without calling the tools first.\n"
-        "7. If the user did not specify a location, DO NOT call any tool. Ask for the location.\n\n"
-        "Example of historical query for a single day:\n"
-        "Query: 'What was the temperature in Cebu on 2025-05-10?'\n"
-        "Tool Call: get_weather_analytics_tool(location='Cebu', start_date='2025-05-10', end_date='2025-05-10', daily_vars=['temperature_2m_max', 'temperature_2m_min'])\n"
-    )
+    system_instructions = build_tool_caller_prompt(today_str, weekday_str, state.active_action)
 
     clean_history = [msg for msg in (state.messages or []) if not isinstance(msg, SystemMessage)]
 
@@ -258,29 +360,11 @@ def node_tool_execution(state: AgentState) -> dict:
         return {"messages": messages, "error": f"Tool execution failed: {e}", "tool_calls": []}
 
 
+
+
 # ---------------------------------------------------------------------------
-# MODULE: RAG GENERATION — System Prompt & Generation Node
+# MODULE: RAG GENERATION — Generation Node
 # ---------------------------------------------------------------------------
-
-GENERATION_PROMPT = """You are WeatherTato, a concise weather assistant for Filipino farmers and agricultural workers.
-
-STRICT RULES:
-1. Keep the ENTIRE response to 4 sentences or fewer (excluding any ALERT).
-2. If there is severe weather (very heavy rain >60mm, strong winds >60km/h, extreme heat >35°C), lead with a bold "⚠️ ALERT: [condition]." on its own line.
-3. Describe values in plain words FIRST, raw number in parentheses second — e.g. "Heavy (45mm)", "Very Hot (37.2°C)", "Calm (12 km/h)".
-   Scales: Rain: None(0) Light(1-10) Moderate(11-30) Heavy(31-60) Very Heavy(>60) mm | Temp: Cool(<20) Warm(20-29) Hot(30-35) Very Hot(>35) °C | Wind: Calm(0-20) Breezy(21-40) Windy(41-60) Strong(>60) km/h | Humidity: Low(<50) Comfortable(50-70) High(71-85) Very High(>85) %
-4. Base answers ONLY on the provided data. Never invent or guess values.
-5. NEVER give farming advice, crop recommendations, or planting/irrigation guidance.
-6. NEVER tell the user you don't have weather data loaded yet.
-7. NEVER tell the user that you're an AI language model.
-Be natural and focus on answering the user's query in the most helpful way possible.
-
-User Query: {query}
-
-Weather Data Context:
-{weather_data}
-"""
-
 
 def node_generation(state: AgentState) -> dict:
     """Node 5 — Response generation with three distinct output modes."""
@@ -346,18 +430,7 @@ def node_memory_update(state: AgentState) -> dict:
         older_messages = messages[:-10]
         recent_messages = messages[-10:]
         
-        # Build prompt to summarize older messages
-        summary_prompt = "Summarize the key information from these past conversation messages."
-        if state.summary:
-            summary_prompt += f"\n\nExisting Summary:\n{state.summary}\n\nIncorporate the existing summary into your new summary."
-            
-        summary_prompt += "\n\nNew Messages to Summarize:\n"
-        for msg in older_messages:
-            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-            if isinstance(msg, (HumanMessage, AIMessage)):
-                summary_prompt += f"{role}: {msg.content}\n"
-                
-        summary_prompt += "\n\nReturn ONLY the concise summary text focusing on relevant context (location, crop, time period, unresolved queries)."
+        summary_prompt = build_memory_summary_prompt(older_messages, state.summary or "")
         
         response = llm.invoke(summary_prompt)
         new_summary = response.content.strip()
@@ -374,14 +447,18 @@ def node_memory_update(state: AgentState) -> dict:
 
 def router_after_guardrails(state: AgentState) -> str:
     """Conditional edge router after ``node_guardrails``."""
-    return "generation" if state.error else "tool_caller"
+    return "generation" if state.error else "task_extraction"
 
 
-def router_after_classifier(state: AgentState) -> str:
-    """Conditional edge router after ``node_classifier``."""
-    if state.intent in ["analytics", "forecast"]:
-        return "tool_caller"
-    return "generation"
+def router_after_task_extraction(state: AgentState) -> str:
+    """Conditional edge router after ``node_task_extraction``."""
+    if state.error:
+        return "generation"
+    if not state.is_ready_for_tools:
+        return "clarification"
+    if state.active_action == "DESCRIBE_CAPABILITIES":
+        return "generation"
+    return "tool_caller"
 
 
 def router_after_tool_caller(state: AgentState) -> str:
@@ -401,6 +478,8 @@ def router_after_tool_caller(state: AgentState) -> str:
 
 workflow = StateGraph(AgentState)
 workflow.add_node("guardrails",    node_guardrails)
+workflow.add_node("task_extraction", node_task_extraction)
+workflow.add_node("clarification", node_clarification)
 workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
 workflow.add_node("generation",    node_generation)
@@ -408,6 +487,8 @@ workflow.add_node("memory_update", node_memory_update)
 
 workflow.add_edge(START, "guardrails")
 workflow.add_conditional_edges("guardrails",    router_after_guardrails)
+workflow.add_conditional_edges("task_extraction", router_after_task_extraction)
+workflow.add_edge("clarification", "memory_update")
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
 
