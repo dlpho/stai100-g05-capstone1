@@ -233,6 +233,7 @@ TOPICS = {
     "WEATHER": "Questions about historical or current weather conditions and weather variables.",
     "CROP": "Questions about palay (rice) or corn yield or price.",
     "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay or corn yield or price.",
+    "GENERAL": "Questions about the chatbot's capabilities, supported information, available analyses, or how to use the chatbot.",
     # Out of scope (allowed=false)
     "FORECAST": "Requests for weather forecasts or weather-related predictions about future weather conditions.",
     "ADVICE": "Requests for farming recommendations or actions, such as planting, irrigation, fertilizer, pesticides, or harvesting.",
@@ -250,7 +251,7 @@ TOPIC_SYSTEM_PROMPT = (
 
     "Rules:\n"
     "- topic must be one of the topic names above\n"
-    "- allowed is true only for WEATHER, CROP, and RELATIONSHIP; false for ADVICE, FORECAST, and OFF_TOPIC\n"
+    "- allowed is true only for WEATHER, CROP, RELATIONSHIP, and GENERAL; false for ADVICE, FORECAST, and OFF_TOPIC\n"
     "- confidence is a float between 0 and 1\n"
     "- classify based on the user's actual request, not individual keywords\n"
     "- use conversation history when necessary to understand a follow-up question"
@@ -266,6 +267,9 @@ TOPIC_FEW_SHOT = [
 
     {"role": "user",      "content": "What is the correlation between rainfall and palay yield in Pampanga?"},
     {"role": "assistant", "content": '{"topic": "RELATIONSHIP", "allowed": true, "confidence": 0.98}'},
+
+    {"role": "user",      "content": "What kind of data can you analyze?"},
+    {"role": "assistant", "content": '{"topic": "GENERAL", "allowed": true, "confidence": 0.99}'},
 
     {"role": "user",      "content": "Should I apply more fertilizer now because rainfall was low?"},
     {"role": "assistant", "content": '{"topic": "ADVICE", "allowed": false, "confidence": 0.98}'},
