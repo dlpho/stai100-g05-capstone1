@@ -252,7 +252,7 @@ def insert_into_retail(cur: sql.Cursor):
     }
     old_df = _fetch_retail_prices(oldapi, oldquery)
     new_df = _fetch_retail_prices(newapi, newquery)
-    comb_df = pd.concat([old_df, new_df], ignore_index=True) 
+    comb_df = pd.concat([old_df, new_df], ignore_index=True)
     comb_df = comb_df.drop_duplicates(subset=["date", "province"], keep="last") # keep newer
     comb_df["year"] = comb_df["date"].dt.year
     comb_df["month"] = comb_df["date"].dt.month

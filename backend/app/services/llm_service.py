@@ -306,22 +306,56 @@ def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, co
     return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
 
 
+def _parse_correlation_period(value: str) -> tuple[str, str]:
+    """Best-effort (start_date, end_date) from a time-period string.
+
+    A bare year (e.g. "2024") narrows the start; anything else falls back to the
+    full available history so the correlation has enough monthly points.
+    """
+    v = (value or "").strip()
+    m = re.match(r"^(\d{4})$", v)
+    if m:
+        y = int(m.group(1))
+        return f"{y}-01-01", "2026-07-31"
+    return "2012-01-01", "2026-07-31"
+
+
 @tool
 def analyze_correlation_tool(location: str, crop_type: str, weather_variables: List[str], time_period_value: str, config: RunnableConfig = None) -> str:
-    """Analyzes the correlation between weather variables and crop outcomes.
+    """Analyzes the correlation between monthly weather and palay outcomes using a 4-month growing-season lag.
     Args:
-        location: The location.
-        crop_type: The type of crop.
-        weather_variables: List of weather variables to correlate.
-        time_period_value: The time period.
+        location: The location (province).
+        crop_type: The type of crop (e.g. PALAY).
+        weather_variables: Variables to correlate (RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, SOIL_MOISTURE).
+        time_period_value: The time period (e.g. "2024"). Uses full history when unspecified.
     """
     state: AgentState = config.get("configurable", {}).get("state")
     if not state or not state.location:
         return "Error: Location not provided or resolved."
-        
-    resolved_prov = state.location.province
-    vars_str = ", ".join(weather_variables)
-    return f"Correlation Analysis for {crop_type} in {resolved_prov} ({time_period_value}):\nStrong positive correlation found with {vars_str}."
+
+    province = state.location.province
+    vars_ = [WEATHER_VAR_MAP[v] for v in weather_variables if v in WEATHER_VAR_MAP]
+    if not vars_:
+        vars_ = list(DEFAULT_WEATHER_VARS)
+
+    start_date, end_date = _parse_correlation_period(time_period_value)
+
+    r = correlations_by_province(
+        vars_,
+        outcomes=["YIELD", "PRODUCTION", "PRICE"],
+        start_date=start_date,
+        end_date=end_date,
+        lag_months=4,
+        province_name=province,
+    )
+    if r.empty:
+        return f"No correlation data available for {province} ({time_period_value})."
+
+    r = r.droplevel("province")
+    return (
+        f"Correlation for {crop_type} in {province} ({start_date} to {end_date}, 4-month lag):\n"
+        + r.round(3).to_markdown(index=True)
+    )
 
 
 @tool

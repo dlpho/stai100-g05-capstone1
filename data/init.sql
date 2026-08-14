@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS dim_city_municipality (
     province_id INTEGER NOT NULL,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
-    FOREIGN KEY (province_id) REFERENCES dim_province(province_id) ON DELETE CASCADE
+    FOREIGN KEY (province_id) REFERENCES dim_province(province_id) ON DELETE CASCADE,
+    UNIQUE (city_municipality_name, province_id)
 );
 
 CREATE TABLE IF NOT EXISTS dim_barangay (
@@ -21,7 +22,8 @@ CREATE TABLE IF NOT EXISTS dim_barangay (
     city_municipality_id INTEGER NOT NULL,
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
-    FOREIGN KEY (city_municipality_id) REFERENCES dim_city_municipality(city_municipality_id) ON DELETE CASCADE
+    FOREIGN KEY (city_municipality_id) REFERENCES dim_city_municipality(city_municipality_id) ON DELETE CASCADE,
+    UNIQUE (barangay_name, city_municipality_id)
 );
 
 INSERT OR IGNORE INTO dim_province (region_name, province_name, latitude, longitude) VALUES
@@ -31,7 +33,8 @@ INSERT OR IGNORE INTO dim_province (region_name, province_name, latitude, longit
 ('Region III (Central Luzon)', 'Nueva Ecija', 15.619597664873712, 121.02167261035025),
 ('Region III (Central Luzon)', 'Pampanga', 15.058489921748, 120.64719833089151),
 ('Region III (Central Luzon)', 'Tarlac', 15.47829450787392, 120.47615743319972),
-('Region III (Central Luzon)', 'Zambales', 15.286127431578489, 120.14405413196098);
+('Region III (Central Luzon)', 'Zambales', 15.286127431578489, 120.14405413196098)
+ON CONFLICT(province_name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS fact_palay_production (
     production_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,8 +58,8 @@ CREATE TABLE IF NOT EXISTS fact_retail_prices (
     UNIQUE (province_id, year, month)
 );
 
-CREATE INDEX IF NOT EXISTS idx_prod_prov_time ON fact_palay_production (province_id, year, month);
-CREATE INDEX IF NOT EXISTS idx_prices_prov_time ON fact_retail_prices (province_id, year, month);
+CREATE INDEX IF NOT EXISTS idx_city_prov_id ON dim_city_municipality (province_id);
+CREATE INDEX IF NOT EXISTS idx_brgy_city_id ON dim_barangay (city_municipality_id);
 
 CREATE VIEW IF NOT EXISTS v_monthly_market_summary AS
 SELECT
