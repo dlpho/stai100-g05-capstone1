@@ -1,5 +1,4 @@
-import csv, io, sqlite3
-from typing import Optional
+import csv, sqlite3
 
 def seed_muni(cur: sqlite3.Cursor, data: list[dict]):
   for r in data:
