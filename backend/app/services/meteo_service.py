@@ -216,3 +216,50 @@ def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
             md_output += "\n"
 
     return md_output
+# def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
+#     """Fetch a 14-day weather forecast from the Open-Meteo Forecast API."""
+#     url = "https://api.open-meteo.com/v1/forecast"
+#     params = {
+#         "latitude": lat,
+#         "longitude": lon,
+#         "daily": daily_vars,
+#         "timezone": "Asia/Manila",
+#         "forecast_days": 14
+#     }
+
+#     responses = openmeteo.weather_api(url, params=params)
+#     response = responses[0]
+
+#     md_output = f"### Weather Forecast for {lat}, {lon}\n\n"
+
+#     if daily_vars and response.Daily():
+#         daily = response.Daily()
+#         daily_data = {"date": pd.date_range(
+#             start = pd.to_datetime(daily.Time(), unit = "s", utc = True),
+#             end = pd.to_datetime(daily.TimeEnd(), unit = "s", utc = True),
+#             freq = pd.Timedelta(seconds = daily.Interval()),
+#             inclusive = "left"
+#         ).tz_convert("Asia/Manila")}
+
+#         for i, var in enumerate(daily_vars):
+#             daily_data[var] = daily.Variables(i).ValuesAsNumpy()
+
+#         daily_df = pd.DataFrame(data=daily_data)
+#         md_output += "#### Daily Forecast\n" + daily_df.to_markdown(index=False) + "\n\n"
+
+#         # Pre-compute exact aggregates to prevent LLM math hallucinations
+#         if not daily_df.empty:
+#             md_output += "#### Summary Statistics (Exact Computations)\n"
+#             for var in daily_vars:
+#                 if "precipitation" in var or "rain" in var or "duration" in var:
+#                     md_output += f"- Total {var}: {daily_df[var].sum():.2f}\n"
+#                 if "max" in var:
+#                     md_output += f"- Absolute Highest {var}: {daily_df[var].max():.2f}\n"
+#                 if "min" in var:
+#                     md_output += f"- Absolute Lowest {var}: {daily_df[var].min():.2f}\n"
+#                 # Provide averages for temperatures or explicit mean variables
+#                 if "mean" in var or ("temperature" in var and "max" not in var and "min" not in var):
+#                     md_output += f"- Average {var}: {daily_df[var].mean():.2f}\n"
+#             md_output += "\n"
+
+#     return md_output

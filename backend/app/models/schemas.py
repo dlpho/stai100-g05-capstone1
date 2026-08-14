@@ -45,7 +45,7 @@ class ExtractedSlots(BaseModel):
     """Extracted slots from the user query."""
     location: Optional[str] = None
     time_period: Optional[TimePeriod] = None
-    weather_variables: Optional[List[Literal["RAINFALL", "MEAN_TEMP", "MAX_TEMP", "MIN_TEMP", "WIND_GUST", "SOIL_MOISTURE"]]] = Field(default_factory=list)
+    weather_variables: Optional[List[Literal["ALL", "RAINFALL", "MEAN_TEMP", "MAX_TEMP", "MIN_TEMP", "SURFACE_PRESSURE", "SOIL_MOISTURE"]]] = Field(default_factory=list)
     crop_type: Optional[Literal["PALAY"]] = None
     outcome_metric: Optional[Literal["YIELD", "PRODUCTION", "PRICE"]] = None
 
@@ -83,3 +83,7 @@ class AgentState(BaseModel):
     slots: Optional[dict] = Field(default_factory=dict)
     missing_slots: Optional[List[str]] = Field(default_factory=list)
     is_ready_for_tools: bool = False
+    
+    # RAG specific
+    rag_context: Optional[str] = None
+    requires_rag: bool = False

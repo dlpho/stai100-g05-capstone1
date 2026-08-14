@@ -21,8 +21,9 @@ from core.prompts import (
     build_memory_summary_prompt,
     GENERATION_PROMPT,
 )
-from services.meteo_service import get_weather_analytics, DEFAULT_WEATHER_VARS
-from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP
+from services.meteo_service import fetch_monthly_weather, DEFAULT_WEATHER_VARS
+from services.rag_service import retrieve_rrl_context
+from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP, compute_detailed_correlation
 from langchain_core.runnables import RunnableConfig
 from services.location_resolve import resolve_location_sqlite
 from services.predict_service import predict_price, predict_yield
@@ -231,8 +232,11 @@ def node_location_resolution(state: AgentState) -> dict:
 
     if status == "UNSUPPORTED_REGION":
         return {"error": "Unsupported location: We currently only support provinces in Region III."}
-    elif status == "AMBIGUOUS" or status == "NOT_FOUND":
+    elif status == "AMBIGUOUS":
         return {"is_ready_for_tools": False, "missing_slots": ["location"]}
+
+    elif status == "NOT_FOUND":
+        return {"error": f"Location '{location_str}' could not be resolved using the current Region III location database. WeatherTato currently supports locations contained in its Region III dataset."}
 
     return {"location": loc_entity}
 
@@ -244,16 +248,12 @@ def node_location_resolution(state: AgentState) -> dict:
 # Removed _resolve_location and location_search dependency
 
 @tool
-def get_weather_analytics_tool(location: str, start_date: str, end_date: str, daily_vars: list[str], granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none", config: RunnableConfig = None) -> str:
-    """Gets historical weather analytics data for a location.
+def get_monthly_weather_tool(start_date: str, end_date: str, daily_vars: list[str] = None, config: RunnableConfig = None) -> str:
+    """Gets historical monthly weather analytics data for the user's location.
     Args:
-        location: The name of the city, municipality, or province.
         start_date: Exact start date in YYYY-MM-DD (must be a past date).
         end_date: Exact end date in YYYY-MM-DD (must be a past date).
-        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
-        granularity: 'day', 'month', or 'year'. Default 'day'.
-        inner_aggregation: 'mean', 'max', or 'min'. Default 'mean'.
-        find_extreme: 'highest', 'lowest', or 'none'. Default 'none'.
+        daily_vars: List of daily variables to fetch. Allowed values: precipitation_sum, temperature_2m_mean, temperature_2m_max, temperature_2m_min, surface_pressure_mean, soil_moisture_0_to_100cm_mean. Leave empty for default core variables.
     """
     state: AgentState = config.get("configurable", {}).get("state")
     if not state or not state.location:
@@ -269,9 +269,34 @@ def get_weather_analytics_tool(location: str, start_date: str, end_date: str, da
         lat = loc.province_latitude
         lon = loc.province_longitude
 
-    if not daily_vars:
-        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
-    return get_weather_analytics(float(lat), float(lon), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
+    # Validate requested variables against allowed set
+    validated_vars = []
+    discarded_vars = []
+    if daily_vars:
+        if "ALL" in daily_vars:
+            validated_vars = list(DEFAULT_WEATHER_VARS)
+        else:
+            for v in daily_vars:
+                if v in DEFAULT_WEATHER_VARS:
+                    validated_vars.append(v)
+                else:
+                    discarded_vars.append(v)
+    if not validated_vars:
+        validated_vars = list(DEFAULT_WEATHER_VARS)
+
+    try:
+        df = fetch_monthly_weather(float(lat), float(lon), start_date, end_date, daily_vars=validated_vars)
+        if df.empty:
+            return json.dumps({"markdown": f"No weather data found for the requested location from {start_date} to {end_date}.", "structured_data": {}})
+
+        # Keep result compact to avoid overwhelming the LLM
+        md_output = f"### Monthly Weather Data\n\n"
+        if discarded_vars:
+            md_output += f"**Warning:** The following requested variables are invalid and were discarded: {', '.join(discarded_vars)}\n\n"
+        md_output += df.to_markdown(index=False)
+        return md_output
+    except Exception as e:
+        return f"Error fetching weather data from Open-Meteo: {str(e)}"
 
 @tool
 def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, config: RunnableConfig = None) -> str:
@@ -286,7 +311,8 @@ def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, co
         return "Error: Location not provided or resolved."
 
     resolved_prov = state.location.province
-    return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
+    md_output = f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
+    return md_output
 
 
 def _parse_correlation_period(value: str) -> tuple[str, str]:
@@ -309,7 +335,7 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
     Args:
         location: The location (province).
         crop_type: The type of crop (e.g. PALAY).
-        weather_variables: Variables to correlate (RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, SOIL_MOISTURE).
+        weather_variables: Variables to correlate (ALL, RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, SURFACE_PRESSURE, SOIL_MOISTURE). Pass ["ALL"] to analyze all variables.
         time_period_value: The time period (e.g. "2024"). Uses full history when unspecified.
     """
     state: AgentState = config.get("configurable", {}).get("state")
@@ -317,21 +343,26 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
         return "Error: Location not provided or resolved."
 
     province = state.location.province
-    vars_ = [WEATHER_VAR_MAP[v] for v in weather_variables if v in WEATHER_VAR_MAP]
-    if not vars_:
+    if "ALL" in weather_variables:
         vars_ = list(DEFAULT_WEATHER_VARS)
+    else:
+        vars_ = [WEATHER_VAR_MAP[v] for v in weather_variables if v in WEATHER_VAR_MAP]
+        if not vars_:
+            vars_ = list(DEFAULT_WEATHER_VARS)
 
     start_date, end_date = _parse_correlation_period(time_period_value)
 
-    r = correlations_by_province(
-        vars_,
+    details = compute_detailed_correlation(
+        weather_vars=vars_,
         outcomes=["YIELD", "PRODUCTION", "PRICE"],
         start_date=start_date,
         end_date=end_date,
-        lag_months=4,
         province_name=province,
+        selected_lag=4
     )
-    if r.empty:
+
+    obs_df = details["observations"]
+    if obs_df.empty:
         return f"No correlation data available for {province} ({time_period_value})."
 
     r = r.droplevel("province")
@@ -405,7 +436,7 @@ def node_tool_caller(state: AgentState) -> dict:
     weekday_str = today_dt.strftime("%A")
 
     tools = [
-        get_weather_analytics_tool,
+        get_monthly_weather_tool,
         get_crop_data_tool,
         analyze_correlation_tool,
         predict_yield_tool,
@@ -451,6 +482,7 @@ def node_tool_execution(state: AgentState) -> dict:
     try:
         messages = list(state.messages or [])
         md_list = []
+        structured_payload = None
 
         for tool_call in state.tool_calls:
             name = tool_call["name"]
@@ -461,9 +493,9 @@ def node_tool_execution(state: AgentState) -> dict:
 
             config = {"configurable": {"state": state}}
 
-            if name == "get_weather_analytics_tool":
-                md = get_weather_analytics_tool.invoke(args, config)
-            elif name == "get_crop_data_tool":
+            # if name == "get_weather_analytics_tool":
+                # md = get_weather_analytics_tool.invoke(args, config)
+            if name == "get_crop_data_tool":
                 md = get_crop_data_tool.invoke(args, config)
             elif name == "analyze_correlation_tool":
                 md = analyze_correlation_tool.invoke(args, config)
@@ -474,17 +506,50 @@ def node_tool_execution(state: AgentState) -> dict:
             else:
                 md = f"Unknown tool: {name}"
 
-            messages.append(ToolMessage(content=md, tool_call_id=tool_call_id))
-            md_list.append(md)
+            messages.append(ToolMessage(content=str(md), tool_call_id=tool_call_id))
 
-        combined_md = "\n\n".join(md_list)
-        return {"messages": messages, "weather_data_markdown": combined_md, "tool_calls": [], "error": None}
+        return {"messages": messages, "tool_calls": [], "error": None}
 
     except Exception as e:
         messages = list(state.messages or [])
         for tool_call in state.tool_calls:
             messages.append(ToolMessage(content=f"Error executing tool: {e}", tool_call_id=tool_call.get("id", "")))
         return {"messages": messages, "error": f"Tool execution failed: {e}", "tool_calls": []}
+
+
+
+
+# ---------------------------------------------------------------------------
+# MODULE: RAG RETRIEVAL & GENERATION
+# ---------------------------------------------------------------------------
+
+def node_rag_retrieval(state: AgentState) -> dict:
+    """Node 4.5 — Post-Analysis RAG Literature Retrieval."""
+    if state.error:
+        return state
+
+    query = ""
+    # Deterministic query formulation based on context
+    if state.active_action == "ANALYZE_CORRELATION":
+        vars_requested = "weather"
+        if state.slots and state.slots.get("weather_variables"):
+            vars_requested = " and ".join(state.slots["weather_variables"])
+
+        outcome = state.slots.get("outcome_metric", "rice yield").lower()
+        query = f"relationship between {vars_requested} and {outcome}"
+
+    elif state.active_action == "PREDICT_OUTCOME":
+        query = "predicting rice yield from weather variables"
+
+    elif "price" in state.user_query.lower() or state.topic == "MARKET":
+        query = "rice production and rice price supply shocks"
+
+    else:
+        query = "weather impact on rice yield and production"
+
+    rag_context = retrieve_rrl_context(query)
+    return {"rag_context": rag_context}
+
 
 # ---------------------------------------------------------------------------
 # MODULE: RAG GENERATION — Generation Node
@@ -501,11 +566,36 @@ def node_generation(state: AgentState) -> dict:
     if state.intent == "off-topic":
         return {"final_response": "I can only answer questions related to weather conditions and forecasts."}
 
-    weather_data = state.weather_data_markdown or "No data available."
-    system_content = GENERATION_PROMPT.format(query=state.user_query, weather_data=weather_data)
-
+    # Extract tool results directly from messages
     raw_history = list(state.messages or [])
     resolved_tool_call_ids = {msg.tool_call_id for msg in raw_history if isinstance(msg, ToolMessage)}
+
+    # We only care about the latest tool messages for generation context
+    tool_results_md = []
+    for msg in reversed(raw_history):
+        if isinstance(msg, ToolMessage):
+            tool_results_md.append(msg.content)
+        elif isinstance(msg, AIMessage) and msg.tool_calls:
+            break
+
+    tool_results_md.reverse()
+    tool_results_str = "\n\n".join(tool_results_md) if tool_results_md else "No analytical data available."
+
+    rag_context_str = state.rag_context or "No literature context available."
+
+    active_action = state.active_action or "UNKNOWN"
+    loc = state.slots.get("location") if state.slots else "Not specified"
+    period_dict = state.slots.get("time_period") if state.slots else {}
+    period_str = period_dict.get("value", "Not specified") if period_dict else "Not specified"
+
+    system_content = GENERATION_PROMPT.format(
+        query=state.user_query,
+        active_action=active_action,
+        location=loc,
+        time_period=period_str,
+        tool_results=tool_results_str,
+        rag_context=rag_context_str
+    )
 
     safe_history = []
     for msg in raw_history:
@@ -595,6 +685,14 @@ def router_after_tool_caller(state: AgentState) -> str:
         return "generation"
     if state.tool_calls:
         return "tool_execution"
+
+    # Trigger RAG if action is analytical OR user asks for explanation
+    explanation_keywords = ["why", "explain", "how does", "interpretation", "interpret", "reason", "impact"]
+    needs_explanation = any(kw in state.user_query.lower() for kw in explanation_keywords)
+
+    if state.active_action in ["ANALYZE_CORRELATION", "PREDICT_OUTCOME"] or needs_explanation:
+        return "rag_retrieval"
+
     return "generation"
 
 # ---------------------------------------------------------------------------
@@ -608,6 +706,7 @@ workflow.add_node("location_resolution", node_location_resolution)
 workflow.add_node("clarification", node_clarification)
 workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
+workflow.add_node("rag_retrieval", node_rag_retrieval)
 workflow.add_node("generation",    node_generation)
 workflow.add_node("memory_update", node_memory_update)
 
@@ -619,6 +718,7 @@ workflow.add_edge("clarification", "memory_update")
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
 
+workflow.add_edge("rag_retrieval", "generation")
 workflow.add_edge("generation", "memory_update")
 workflow.add_edge("memory_update", END)
 
