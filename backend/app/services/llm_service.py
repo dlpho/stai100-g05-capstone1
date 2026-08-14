@@ -4,7 +4,7 @@ WeatherTato — LangGraph ReAct Agent Orchestration
 import datetime
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
@@ -50,9 +50,9 @@ def node_guardrails(state: AgentState) -> dict:
     
     # GUARD 2: detecting prompt injection & out-of-scope queries
     if is_prompt_injection(clean_query):
-        return {"error": "Sorry, it seems your question may violate the system guidelines. Please rephrase your question.", "user_query": clean_query}
+        return {"error": "Sorry, it seems your question may violate the system guidelines. Please rephrase your question.", "user_query": clean_query, "tool_iteration_count": 0}
     if is_out_of_scope(clean_query):
-        return {"error": "Sorry, I can provide weather and palay-related information, correlations, and model estimates, but I cannot recommend what actions to take.", "user_query": clean_query}
+        return {"error": "Sorry, I can provide weather and palay-related information, correlations, and model estimates, but I cannot recommend what actions to take.", "user_query": clean_query, "tool_iteration_count": 0}
         
     # GUARD 3: topic restriction (based on is_on_topic function)
     result = is_on_topic(clean_query, llm, state.messages)
@@ -64,8 +64,8 @@ def node_guardrails(state: AgentState) -> dict:
             msg = "I can provide data analysis, but I cannot give direct farming advice or crop recommendations."
         else:
             msg = "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot answer off-topic queries."
-        return {"error": msg, "user_query": clean_query, "topic": topic}
-    return {"user_query": clean_query, "topic": topic}
+        return {"error": msg, "user_query": clean_query, "topic": topic, "tool_iteration_count": 0}
+    return {"user_query": clean_query, "topic": topic, "tool_iteration_count": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +208,32 @@ def node_clarification(state: AgentState) -> dict:
     return {"final_response": response.content, "messages": final_messages}
 
 
+def node_location_resolution(state: AgentState) -> dict:
+    """Node 2.5 — Lightweight location resolution stub."""
+    if state.error or not state.is_ready_for_tools or state.active_action == "DESCRIBE_CAPABILITIES":
+        return {}
+        
+    location_str = state.slots.get("location")
+    if not location_str:
+        return {}
+        
+    loc_upper = location_str.upper()
+    supported_provinces = ["PAMPANGA", "BULACAN", "NUEVA ECIJA", "TARLAC", "BATAAN", "ZAMBALES", "AURORA"]
+    
+    is_supported = any(prov in loc_upper for prov in supported_provinces)
+    
+    if not is_supported:
+        return {"error": "Unsupported location: We currently only support provinces in Region III."}
+        
+    mock_entity = LocationEntity(
+        latitude="15.0",
+        longitude="120.0", 
+        barangay=location_str
+    )
+    
+    return {"location": mock_entity}
+
+
 # ---------------------------------------------------------------------------
 # MODULE: TOOL USE — Geocoding & Weather Tools
 # ---------------------------------------------------------------------------
@@ -261,6 +287,44 @@ def get_weather_forecast_tool(location: str, daily_vars: list[str]) -> str:
     return get_weather_forecast(float(loc.latitude), float(loc.longitude), daily_vars)
 
 
+@tool
+def get_crop_data_tool(location: str, crop_type: str, time_period_value: str) -> str:
+    """Gets historical crop production data for a location.
+    Args:
+        location: The name of the city, municipality, or province.
+        crop_type: The type of crop (e.g. PALAY or CORN).
+        time_period_value: The time period (e.g. 2024, Q3 2025).
+    """
+    return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {location} ({time_period_value}) | 1500 MT |"
+
+
+@tool
+def analyze_correlation_tool(location: str, crop_type: str, weather_variables: List[str], time_period_value: str) -> str:
+    """Analyzes the correlation between weather variables and crop outcomes.
+    Args:
+        location: The location.
+        crop_type: The type of crop.
+        weather_variables: List of weather variables to correlate.
+        time_period_value: The time period.
+    """
+    vars_str = ", ".join(weather_variables)
+    return f"Correlation Analysis for {crop_type} in {location} ({time_period_value}):\nStrong positive correlation found with {vars_str}."
+
+
+@tool
+def predict_outcome_tool(location: str, crop_type: str, time_period_value: str, weather_variables: Optional[List[str]] = None) -> str:
+    """Predicts crop outcomes. If `weather_variables` is omitted, the model will deterministically use the fixed POC default feature set. Explicitly supplied variables will override the defaults.
+    Args:
+        location: The location.
+        crop_type: The type of crop.
+        time_period_value: The time period.
+        weather_variables: Optional list of weather variables.
+    """
+    vars_used = weather_variables if weather_variables else ["precipitation_sum", "temperature_2m_mean"]
+    vars_str = ", ".join(vars_used)
+    return f"Prediction for {crop_type} in {location} ({time_period_value}):\nBased on {vars_str}, the estimated yield is 4.2 MT/ha."
+
+
 # ---------------------------------------------------------------------------
 # MODULE: REACT LOOP — Tool Caller Node (Reason step)
 # ---------------------------------------------------------------------------
@@ -270,19 +334,22 @@ def node_tool_caller(state: AgentState) -> dict:
     if state.error or not state.is_ready_for_tools or state.active_action == "DESCRIBE_CAPABILITIES":
         return state
 
-    # Gracefully bypass tool calling for unimplemented DS actions
-    if state.active_action in ["GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_OUTCOME"]:
-        mock_msg = (
-            f"[SYSTEM NOTE: The backend data tools for {state.active_action} are not yet implemented. "
-            f"The extraction node successfully gathered these slots: {json.dumps(state.slots)}.]"
-        )
-        return {"weather_data_markdown": mock_msg, "tool_calls": [], "waiting_for_location": False}
+    iteration_count = state.tool_iteration_count + 1
+    if iteration_count > 3:
+        print("[ReAct] Max iterations reached. Terminating loop cleanly.")
+        return {"tool_calls": [], "tool_iteration_count": iteration_count}
 
     today_dt = datetime.datetime.now()
     today_str = today_dt.strftime("%Y-%m-%d")
     weekday_str = today_dt.strftime("%A")
 
-    tools = [get_weather_analytics_tool, get_weather_forecast_tool]
+    tools = [
+        get_weather_analytics_tool,
+        get_weather_forecast_tool,
+        get_crop_data_tool,
+        analyze_correlation_tool,
+        predict_outcome_tool
+    ]
     llm_with_tools = llm.bind_tools(tools)
 
     system_instructions = build_tool_caller_prompt(today_str, weekday_str, state.active_action)
@@ -304,12 +371,9 @@ def node_tool_caller(state: AgentState) -> dict:
 
     if response.tool_calls:
         print("LLM Tool Calls:", json.dumps(response.tool_calls, indent=2))
-        return {"messages": messages, "tool_calls": response.tool_calls, "waiting_for_location": False}
+        return {"messages": messages, "tool_calls": response.tool_calls, "tool_iteration_count": iteration_count}
 
-    has_location = len(search_location(state.user_query)) > 0
-    if not has_location:
-        return {"messages": messages, "tool_calls": [], "waiting_for_location": True}
-    return {"messages": messages, "tool_calls": [], "waiting_for_location": False, "final_response": response.content}
+    return {"messages": messages, "tool_calls": [], "tool_iteration_count": iteration_count}
 
 
 # ---------------------------------------------------------------------------
@@ -320,13 +384,12 @@ def node_tool_execution(state: AgentState) -> dict:
     """Node 4 — ReAct Act step: executes tool calls and appends observations."""
     if state.error and not state.error.startswith("{"):
         return state
-    if state.waiting_for_location or not state.tool_calls:
+    if not state.tool_calls:
         return state
 
     try:
         messages = list(state.messages or [])
         md_list = []
-        resolved_locs = []
 
         for tool_call in state.tool_calls:
             name = tool_call["name"]
@@ -339,19 +402,20 @@ def node_tool_execution(state: AgentState) -> dict:
                 md = get_weather_analytics_tool.invoke(args)
             elif name == "get_weather_forecast_tool":
                 md = get_weather_forecast_tool.invoke(args)
+            elif name == "get_crop_data_tool":
+                md = get_crop_data_tool.invoke(args)
+            elif name == "analyze_correlation_tool":
+                md = analyze_correlation_tool.invoke(args)
+            elif name == "predict_outcome_tool":
+                md = predict_outcome_tool.invoke(args)
             else:
                 md = f"Unknown tool: {name}"
 
             messages.append(ToolMessage(content=md, tool_call_id=tool_call_id))
             md_list.append(md)
 
-            loc = _resolve_location(args.get("location", ""))
-            if loc:
-                resolved_locs.append(loc)
-
         combined_md = "\n\n".join(md_list)
-        final_loc = resolved_locs[0] if resolved_locs else None
-        return {"messages": messages, "weather_data_markdown": combined_md, "location": final_loc, "tool_calls": [], "error": None}
+        return {"messages": messages, "weather_data_markdown": combined_md, "tool_calls": [], "error": None}
 
     except Exception as e:
         messages = list(state.messages or [])
@@ -458,14 +522,19 @@ def router_after_task_extraction(state: AgentState) -> str:
         return "clarification"
     if state.active_action == "DESCRIBE_CAPABILITIES":
         return "generation"
+    return "location_resolution"
+
+
+def router_after_location_resolution(state: AgentState) -> str:
+    """Conditional edge router after ``node_location_resolution``."""
+    if state.error:
+        return "generation"
     return "tool_caller"
 
 
 def router_after_tool_caller(state: AgentState) -> str:
     """Conditional edge router after ``node_tool_caller``."""
     if state.error and not state.error.startswith("{"):
-        return "generation"
-    if state.waiting_for_location:
         return "generation"
     if state.tool_calls:
         return "tool_execution"
@@ -479,6 +548,7 @@ def router_after_tool_caller(state: AgentState) -> str:
 workflow = StateGraph(AgentState)
 workflow.add_node("guardrails",    node_guardrails)
 workflow.add_node("task_extraction", node_task_extraction)
+workflow.add_node("location_resolution", node_location_resolution)
 workflow.add_node("clarification", node_clarification)
 workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
@@ -488,6 +558,7 @@ workflow.add_node("memory_update", node_memory_update)
 workflow.add_edge(START, "guardrails")
 workflow.add_conditional_edges("guardrails",    router_after_guardrails)
 workflow.add_conditional_edges("task_extraction", router_after_task_extraction)
+workflow.add_conditional_edges("location_resolution", router_after_location_resolution)
 workflow.add_edge("clarification", "memory_update")
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back

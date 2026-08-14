@@ -72,6 +72,7 @@ class AgentState(BaseModel):
     messages: Optional[List[Any]] = Field(default_factory=list)
     tool_calls: Optional[List[Any]] = Field(default_factory=list)
     summary: Optional[str] = ""
+    tool_iteration_count: int = 0
 
     # Task + Slot Extraction Fields
     active_action: Optional[str] = None
