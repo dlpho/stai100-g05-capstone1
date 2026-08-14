@@ -17,3 +17,5 @@ tabulate
 streamlit
 a2wsgi
 tsdisagg
+chromadb
+sentence-transformers

@@ -22,6 +22,7 @@ from core.prompts import (
     GENERATION_PROMPT,
 )
 from services.meteo_service import fetch_monthly_weather, DEFAULT_WEATHER_VARS
+from services.rag_service import retrieve_rrl_context
 from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP
 from langchain_core.runnables import RunnableConfig
 from services.location_resolve import resolve_location_sqlite
@@ -478,6 +479,38 @@ def node_tool_execution(state: AgentState) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# MODULE: RAG RETRIEVAL & GENERATION
+# ---------------------------------------------------------------------------
+
+def node_rag_retrieval(state: AgentState) -> dict:
+    """Node 4.5 — Post-Analysis RAG Literature Retrieval."""
+    if state.error:
+        return state
+
+    query = ""
+    # Deterministic query formulation based on context
+    if state.active_action == "ANALYZE_CORRELATION":
+        vars_requested = "weather"
+        if state.slots and state.slots.get("weather_variables"):
+            vars_requested = " and ".join(state.slots["weather_variables"])
+            
+        outcome = state.slots.get("outcome_metric", "rice yield").lower()
+        query = f"relationship between {vars_requested} and {outcome}"
+        
+    elif state.active_action == "PREDICT_OUTCOME":
+        query = "predicting rice yield from weather variables"
+        
+    elif "price" in state.user_query.lower() or state.topic == "MARKET":
+        query = "rice production and rice price supply shocks"
+        
+    else:
+        query = "weather impact on rice yield and production"
+
+    rag_context = retrieve_rrl_context(query)
+    return {"rag_context": rag_context}
+
+
+# ---------------------------------------------------------------------------
 # MODULE: RAG GENERATION — Generation Node
 # ---------------------------------------------------------------------------
 
@@ -493,7 +526,27 @@ def node_generation(state: AgentState) -> dict:
         return {"final_response": "I can only answer questions related to weather conditions and forecasts."}
 
     weather_data = state.weather_data_markdown or "No data available."
-    system_content = GENERATION_PROMPT.format(query=state.user_query, weather_data=weather_data)
+    rag_context_str = state.rag_context or "No literature context available."
+    
+    rag_instructions = f"""
+### WeatherTato Calculations
+The following data represents the live analytical results calculated from the project's datasets:
+{weather_data}
+
+### Published Research Evidence
+The following context contains relevant findings retrieved from the RRL:
+{rag_context_str}
+
+### Instructions for Generation
+- Clearly distinguish between "WeatherTato calculations" and "published research evidence."
+- Do not describe the numerical results as "live calculations." Use "WeatherTato calculations" instead.
+- Provide an explanation or interpretation connecting the two.
+- If the literature supports the calculations, explain the consistency. If it differs, explicitly state the differing findings or conditions.
+- DO NOT invent citations, numerical values, or findings that are not present in the Published Research Evidence.
+- Never present a correlation, coefficient, or numerical finding from the RRL as if it were calculated from WeatherTato's own dataset.
+"""
+
+    system_content = GENERATION_PROMPT.format(query=state.user_query, weather_data=rag_instructions)
 
     raw_history = list(state.messages or [])
     resolved_tool_call_ids = {msg.tool_call_id for msg in raw_history if isinstance(msg, ToolMessage)}
@@ -591,6 +644,14 @@ def router_after_tool_caller(state: AgentState) -> str:
         return "generation"
     if state.tool_calls:
         return "tool_execution"
+        
+    # Trigger RAG if action is analytical OR user asks for explanation
+    explanation_keywords = ["why", "explain", "how does", "interpretation", "interpret", "reason", "impact"]
+    needs_explanation = any(kw in state.user_query.lower() for kw in explanation_keywords)
+    
+    if state.active_action in ["ANALYZE_CORRELATION", "PREDICT_OUTCOME"] or needs_explanation:
+        return "rag_retrieval"
+        
     return "generation"
 
 
@@ -605,6 +666,7 @@ workflow.add_node("location_resolution", node_location_resolution)
 workflow.add_node("clarification", node_clarification)
 workflow.add_node("tool_caller",   node_tool_caller)
 workflow.add_node("tool_execution", node_tool_execution)
+workflow.add_node("rag_retrieval", node_rag_retrieval)
 workflow.add_node("generation",    node_generation)
 workflow.add_node("memory_update", node_memory_update)
 
@@ -616,6 +678,7 @@ workflow.add_edge("clarification", "memory_update")
 workflow.add_conditional_edges("tool_caller",   router_after_tool_caller)
 workflow.add_edge("tool_execution", "tool_caller")  # ReAct loop back
 
+workflow.add_edge("rag_retrieval", "generation")
 workflow.add_edge("generation", "memory_update")
 workflow.add_edge("memory_update", END)
 

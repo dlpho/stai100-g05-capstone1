@@ -83,3 +83,7 @@ class AgentState(BaseModel):
     slots: Optional[dict] = Field(default_factory=dict)
     missing_slots: Optional[List[str]] = Field(default_factory=list)
     is_ready_for_tools: bool = False
+    
+    # RAG specific
+    rag_context: Optional[str] = None
+    requires_rag: bool = False
