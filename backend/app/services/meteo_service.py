@@ -22,6 +22,9 @@ MONTHLY_AGG = {
     "temperature_2m_min": "mean",             # avg of daily min temp (C)
     "surface_pressure_mean": "mean",          # avg surface pressure (hPa)
     "soil_moisture_0_to_100cm_mean": "mean",  # avg soil moisture
+    "wind_gusts_10m_max": "max",              # strongest daily gust (km/h)
+    "et0_fao_evapotranspiration": "sum",      # monthly total reference ET0 (mm)
+    "shortwave_radiation_sum": "sum",         # monthly total shortwave radiation (MJ/m2)
 }
 
 # Dorado-study thresholds for the derived extreme-day counts.

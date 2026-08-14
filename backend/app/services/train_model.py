@@ -17,11 +17,16 @@ if ROOT_DIR not in sys.path:
 MODELS_DIR = os.path.join(ROOT_DIR, "services", "models")
 
 WEATHER_VARS = [
-    "precipitation_sum", "et0_fao_evapotranspiration", "shortwave_radiation_sum",
+    "precipitation_sum",
     "temperature_2m_mean", "temperature_2m_max", "temperature_2m_min",
-    "wind_gusts_10m_max", "surface_pressure_mean", "soil_moisture_0_to_100cm_mean",
-    "relative_humidity_2m_mean", "extreme_rain_days", "extreme_heat_days"
+    "surface_pressure_mean", "soil_moisture_0_to_100cm_mean",
+    "wind_gusts_10m_max", "et0_fao_evapotranspiration", "shortwave_radiation_sum",
+    "extreme_rain_days", "extreme_heat_days"
 ]
+
+# Wet-season harvest months (Jun-Nov). The weather->yield sign flips between
+# dry- and wet-season crops (antecedent rain helps dry-season, hurts wet-season).
+SEASON_WET_MONTHS = {6, 7, 8, 9, 10, 11}
 
 def get_combined_data():
     query = """
@@ -41,15 +46,14 @@ def get_combined_data():
             m.production_lag1,
             m.hist_price,
             w.precipitation_sum,
-            w.et0_fao_evapotranspiration,
-            w.shortwave_radiation_sum,
             w.temperature_2m_mean,
             w.temperature_2m_max,
             w.temperature_2m_min,
             w.wind_gusts_10m_max,
             w.surface_pressure_mean,
             w.soil_moisture_0_to_100cm_mean,
-            w.relative_humidity_2m_mean,
+            w.et0_fao_evapotranspiration,
+            w.shortwave_radiation_sum,
             w.extreme_rain_days,
             w.extreme_heat_days
         FROM fact_weather_monthly w
@@ -70,13 +74,26 @@ def get_combined_data():
     return df
 
 def get_weather_rolling(g):
+    """Build antecedent (growing-season) weather features.
+
+    Shifts each weather variable back 1-4 months (the ~4-month growing season
+    before harvest) and adds a full growing-season aggregate over t-4..t-1,
+    replacing the old contemporaneous windows. Adds a dry/wet-season indicator
+    and interacts it with the two variables whose sign flips by season.
+    """
     g = g.copy()
     for v in WEATHER_VARS:
         if v in g.columns:
-            g[f"{v}_1m"] = g[v]
             is_sum = "sum" in v or "days" in v or "et0" in v
-            g[f"{v}_2m"] = g[v].rolling(2, min_periods=2).sum() if is_sum else g[v].rolling(2, min_periods=2).mean()
-            g[f"{v}_3m"] = g[v].rolling(3, min_periods=3).sum() if is_sum else g[v].rolling(3, min_periods=3).mean()
+            for k in range(1, 5):
+                g[f"{v}_lag{k}"] = g[v].shift(k)
+            gs = g[v].shift(1).rolling(4, min_periods=4)
+            g[f"{v}_gs"] = gs.sum() if is_sum else gs.mean()
+
+    g["is_wet"] = g["month"].isin(SEASON_WET_MONTHS).astype(int)
+    for v in ("precipitation_sum", "soil_moisture_0_to_100cm_mean"):
+        if f"{v}_gs" in g.columns:
+            g[f"{v}_gs_wet"] = g[f"{v}_gs"] * g["is_wet"]
     return g
 
 def calc_metrics(y_true, y_pred):
@@ -122,8 +139,8 @@ def main():
     w_cols = [c for c in df.columns if any(c.startswith(v) for v in WEATHER_VARS)]
     p_cols = [c for c in df.columns if c.startswith("prov_")]
 
-    y_feats = w_cols + ["hist_yield", "hist_price", "month_sin", "month_cos"] + p_cols
-    p_feats = ["price_lag1", "price_lag12", "yield_lag1", "production_lag1", "hist_yield", "month_sin", "month_cos"] + w_cols + p_cols
+    y_feats = w_cols + ["is_wet", "hist_yield", "hist_price", "month_sin", "month_cos"] + p_cols
+    p_feats = ["price_lag1", "price_lag12", "yield_lag1", "production_lag1", "hist_yield", "month_sin", "month_cos"] + w_cols + ["is_wet"] + p_cols
 
     # Yield Model
     b1_y = calc_metrics(test["target_yield"], test["hist_yield"])
@@ -147,9 +164,23 @@ def main():
     p_model.fit(train[p_feats], train["target_price"])
     ml_p = calc_metrics(test["target_price"], p_model.predict(test[p_feats]))
 
+    # Production Model
+    b1_pr = calc_metrics(test["target_production"], test["production_lag1"])
+    b2_pr = calc_metrics(test["target_production"], test["month"].map(train.groupby("month")["target_production"].mean()))
+
+    pr_feats = w_cols + ["is_wet", "production_lag1", "month_sin", "month_cos"] + p_cols
+
+    pr_model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("model", LassoCV(cv=5, random_state=42, max_iter=10000))
+    ])
+    pr_model.fit(train[pr_feats], train["target_production"])
+    ml_pr = calc_metrics(test["target_production"], pr_model.predict(test[pr_feats]))
+
     # Print Interpretability Insights
     print_top_features(y_model, y_feats, "Yield Model Feature Importance")
     print_top_features(p_model, p_feats, "Price Model Feature Importance")
+    print_top_features(pr_model, pr_feats, "Production Model Feature Importance")
 
     print("\n--- Yield Model Benchmarks (MAE, RMSE, R2) ---")
     print(f"Prev Year:         {b1_y[0]:.3f}, {b1_y[1]:.3f}, {b1_y[2]:.3f}")
@@ -161,11 +192,17 @@ def main():
     print(f"Prev Year:         {b2_p[0]:.3f}, {b2_p[1]:.3f}, {b2_p[2]:.3f}")
     print(f"ML Model (Lasso):  {ml_p[0]:.3f}, {ml_p[1]:.3f}, {ml_p[2]:.3f}")
 
+    print("\n--- Production Model Benchmarks (MAE, RMSE, R2) ---")
+    print(f"Prev Month:        {b1_pr[0]:.3f}, {b1_pr[1]:.3f}, {b1_pr[2]:.3f}")
+    print(f"Seasonal Avg:      {b2_pr[0]:.3f}, {b2_pr[1]:.3f}, {b2_pr[2]:.3f}")
+    print(f"ML Model (Lasso):  {ml_pr[0]:.3f}, {ml_pr[1]:.3f}, {ml_pr[2]:.3f}")
+
     os.makedirs(MODELS_DIR, exist_ok=True)
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     joblib.dump(y_model.fit(df[y_feats], df["target_yield"]), os.path.join(MODELS_DIR, f"lasso_yield_model_{timestamp}.joblib"))
     joblib.dump(p_model.fit(df[p_feats], df["target_price"]), os.path.join(MODELS_DIR, f"lasso_price_model_{timestamp}.joblib"))
+    joblib.dump(pr_model.fit(df[pr_feats], df["target_production"]), os.path.join(MODELS_DIR, f"lasso_production_model_{timestamp}.joblib"))
 
 if __name__ == "__main__":
     main()
