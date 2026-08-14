@@ -25,6 +25,7 @@ from services.meteo_service import get_weather_analytics, DEFAULT_WEATHER_VARS
 from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP
 from langchain_core.runnables import RunnableConfig
 from services.location_resolve import resolve_location_sqlite
+from services.predict_service import predict_price, predict_yield
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
 
 # Initialize LLM
@@ -49,13 +50,13 @@ def node_guardrails(state: AgentState) -> dict:
 
     # GUARD 1: redacting PII
     clean_query = remove_pii(query)
-    
+
     # GUARD 2: detecting prompt injection & out-of-scope queries
     if is_prompt_injection(clean_query):
         return {"error": "Sorry, it seems your question may violate the system guidelines. Please rephrase your question.", "user_query": clean_query, "tool_iteration_count": 0}
     if is_out_of_scope(clean_query):
         return {"error": "Sorry, I can provide weather and palay-related information, correlations, and model estimates, but I cannot recommend what actions to take.", "user_query": clean_query, "tool_iteration_count": 0}
-        
+
     # GUARD 3: topic restriction (based on is_on_topic function)
     result = is_on_topic(clean_query, llm, state.messages)
     topic = result.get("topic", "UNKNOWN")
@@ -84,15 +85,15 @@ def node_task_extraction(state: AgentState) -> dict:
     if topic == "WEATHER":
         allowed_actions = ["GET_WEATHER_DATA", "DESCRIBE_CAPABILITIES"]
     elif topic in ["CROP", "CROP_OUTCOMES"]:
-        allowed_actions = ["GET_CROP_DATA", "PREDICT_OUTCOME", "DESCRIBE_CAPABILITIES"]
-    elif topic in ["RELATIONSHIP", "WEATHER_CROP_RELATIONSHIP"]:
-        allowed_actions = ["ANALYZE_CORRELATION", "PREDICT_OUTCOME", "DESCRIBE_CAPABILITIES"]
+        allowed_actions = ["GET_CROP_DATA", "PREDICT_YIELD", "PREDICT_PRICE", "DESCRIBE_CAPABILITIES"]
+    elif topic in ["RELATIONSHIP"]:
+        allowed_actions = ["ANALYZE_CORRELATION", "PREDICT_YIELD", "PREDICT_PRICE", "DESCRIBE_CAPABILITIES"]
     elif topic == "GENERAL":
         allowed_actions = ["DESCRIBE_CAPABILITIES"]
     else:
         allowed_actions = ["UNKNOWN"]
-    
-    SLOT_SYSTEM_PROMPT = build_slot_system_prompt(topic, allowed_actions, state.user_query)
+
+    SLOT_SYSTEM_PROMPT = build_slot_system_prompt(topic, allowed_actions, state.user_query, datetime.datetime.now().strftime("%Y-%m-%d"))
 
     messages = [SystemMessage(content=SLOT_SYSTEM_PROMPT)]
     if state.messages:
@@ -116,11 +117,11 @@ def node_task_extraction(state: AgentState) -> dict:
         if not json_match:
             raise ValueError("No JSON object found in extraction response")
         data = json.loads(json_match.group())
-        
+
         extraction_result = TaskExtraction(**data)
         confidence = extraction_result.confidence
         print(f"Extraction confidence: {confidence:.2f}")
-        
+
         # Low-confidence fallback — treat as UNKNOWN and request clarification
         if confidence < 0.5:
             return {
@@ -129,13 +130,13 @@ def node_task_extraction(state: AgentState) -> dict:
                 "missing_slots": ["clarification"],
                 "is_ready_for_tools": False
             }
-        
+
         # Extract new slots
         if hasattr(extraction_result.slots, "model_dump"):
             new_slots = extraction_result.slots.model_dump(exclude_none=True)
         else:
             new_slots = extraction_result.slots.dict(exclude_none=True)
-            
+
         action = extraction_result.action
     except Exception as e:
         print(f"Extraction failed: {e}")
@@ -146,15 +147,16 @@ def node_task_extraction(state: AgentState) -> dict:
         "GET_WEATHER_DATA": {"location", "time_period", "weather_variables"},
         "GET_CROP_DATA": {"location", "time_period", "crop_type", "outcome_metric"},
         "ANALYZE_CORRELATION": {"location", "time_period", "weather_variables", "crop_type", "outcome_metric"},
-        "PREDICT_OUTCOME": {"location", "time_period", "crop_type"},
+        "PREDICT_YIELD": {"location", "time_period", "crop_type"},
+        "PREDICT_PRICE": {"location", "time_period", "crop_type"},
     }.get(action, set())
 
     # Inherit only the slots relevant to the new action
     current_slots = {k: v for k, v in (state.slots or {}).items() if k in allowed_slots_for_action}
-    
+
     if "time_period" in new_slots and "time_period" in allowed_slots_for_action:
         current_slots["time_period"] = new_slots["time_period"]
-        
+
     for k, v in new_slots.items():
         if k in allowed_slots_for_action and k != "time_period" and v is not None:
             if isinstance(v, list) and not v:
@@ -168,7 +170,9 @@ def node_task_extraction(state: AgentState) -> dict:
         required = ["location", "time_period", "crop_type", "outcome_metric"]
     elif action == "ANALYZE_CORRELATION":
         required = ["location", "time_period", "weather_variables", "crop_type", "outcome_metric"]
-    elif action == "PREDICT_OUTCOME":
+    elif action == "PREDICT_YIELD":
+        required = ["location", "time_period", "crop_type"]
+    elif action == "PREDICT_PRICE":
         required = ["location", "time_period", "crop_type"]
     elif action == "DESCRIBE_CAPABILITIES" or action == "UNKNOWN":
         required = []
@@ -181,7 +185,7 @@ def node_task_extraction(state: AgentState) -> dict:
             missing_slots.append(req)
         elif req == "weather_variables" and isinstance(val, list) and len(val) == 0:
             missing_slots.append(req)
-            
+
     is_ready = len(missing_slots) == 0
 
     return {
@@ -196,21 +200,21 @@ def node_clarification(state: AgentState) -> dict:
     """Node for clarifying missing slots."""
     if not state.missing_slots:
         return {}
-    
+
     clarification_system = build_clarification_prompt(state.active_action, state.missing_slots)
     messages = [SystemMessage(content=clarification_system)]
     if state.messages and isinstance(state.messages[-1], HumanMessage):
         messages.append(state.messages[-1])
     else:
         messages.append(HumanMessage(content=state.user_query))
-        
+
     response = llm.invoke(messages)
-    
+
     final_messages = list(state.messages or [])
     if not (final_messages and isinstance(final_messages[-1], HumanMessage) and final_messages[-1].content == state.user_query):
         final_messages.append(HumanMessage(content=state.user_query))
     final_messages.append(AIMessage(content=response.content))
-    
+
     return {"final_response": response.content, "messages": final_messages}
 
 
@@ -218,18 +222,18 @@ def node_location_resolution(state: AgentState) -> dict:
     """Node 2.5 — Lightweight location resolution stub."""
     if state.error or not state.is_ready_for_tools or state.active_action == "DESCRIBE_CAPABILITIES":
         return {}
-        
+
     location_str = state.slots.get("location")
     if not location_str:
         return {}
-        
+
     loc_entity, status = resolve_location_sqlite(location_str)
-    
+
     if status == "UNSUPPORTED_REGION":
         return {"error": "Unsupported location: We currently only support provinces in Region III."}
     elif status == "AMBIGUOUS" or status == "NOT_FOUND":
         return {"is_ready_for_tools": False, "missing_slots": ["location"]}
-        
+
     return {"location": loc_entity}
 
 
@@ -254,10 +258,10 @@ def get_weather_analytics_tool(location: str, start_date: str, end_date: str, da
     state: AgentState = config.get("configurable", {}).get("state")
     if not state or not state.location:
         return "Error: Location not provided or resolved."
-        
+
     loc = state.location
     active_action = state.active_action
-    
+
     if active_action == "GET_WEATHER_DATA":
         lat = loc.latitude
         lon = loc.longitude
@@ -280,7 +284,7 @@ def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, co
     state: AgentState = config.get("configurable", {}).get("state")
     if not state or not state.location:
         return "Error: Location not provided or resolved."
-        
+
     resolved_prov = state.location.province
     return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
 
@@ -336,25 +340,51 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
         + r.round(3).to_markdown(index=True)
     )
 
-
 @tool
-def predict_outcome_tool(location: str, crop_type: str, time_period_value: str, config: RunnableConfig = None) -> str:
-    """Predicts crop outcomes using the production MLR model.
-    The production prediction model uses a fixed feature set (precipitation_sum, temperature_2m_mean, temperature_2m_max, temperature_2m_min).
+def predict_yield_tool(location: str, target_year: int, target_month: int, config: RunnableConfig = None) -> str:
+    """Predicts the palay (rice) yield (MT per Hectare) for a specific location and date.
     Args:
-        location: The location.
-        crop_type: The type of crop.
-        time_period_value: The time period.
+        location: The name of the province.
+        target_year: The year for the prediction (e.g., 2024).
+        target_month: The month for the prediction as an integer (1-12).
     """
     state: AgentState = config.get("configurable", {}).get("state")
     if not state or not state.location:
         return "Error: Location not provided or resolved."
-        
-    resolved_prov = state.location.province
-    vars_used = ["precipitation_sum", "temperature_2m_mean", "temperature_2m_max", "temperature_2m_min"]
-    vars_str = ", ".join(vars_used)
-    return f"Prediction for {crop_type} in {resolved_prov} ({time_period_value}):\nBased on the fixed production features ({vars_str}), the estimated yield is 4.2 MT/ha."
 
+    resolved_prov = state.location.province
+
+    try:
+        result = predict_yield(resolved_prov, target_year, target_month)
+
+        return (f"| Metric | Value |\n"
+                f"|---|---|\n"
+                f"| Palay Yield Prediction ({resolved_prov}, {target_month}/{target_year}) | {result} MT/ha |")
+    except Exception as e:
+        return f"Could not generate yield prediction for {resolved_prov} on {target_year}-{target_month:02d}. Error: {e}"
+
+@tool
+def predict_price_tool(location: str, target_year: int, target_month: int, config: RunnableConfig = None) -> str:
+    """Predicts the palay (rice) retail price (PHP per kg) for a specific location and date.
+    Args:
+        location: The name of the province.
+        target_year: The year for the prediction (e.g., 2024).
+        target_month: The month for the prediction as an integer (1-12).
+    """
+    state: AgentState = config.get("configurable", {}).get("state")
+    if not state or not state.location:
+        return "Error: Location not provided or resolved."
+
+    resolved_prov = state.location.province
+
+    try:
+        result = predict_price(resolved_prov, target_year, target_month)
+
+        return (f"| Metric | Value |\n"
+                f"|---|---|\n"
+                f"| Palay Price Prediction ({resolved_prov}, {target_month}/{target_year}) | ₱{result}/kg |")
+    except Exception as e:
+        return f"Could not generate price prediction for {resolved_prov} on {target_year}-{target_month:02d}. Error: {e}"
 
 # ---------------------------------------------------------------------------
 # MODULE: REACT LOOP — Tool Caller Node (Reason step)
@@ -378,7 +408,8 @@ def node_tool_caller(state: AgentState) -> dict:
         get_weather_analytics_tool,
         get_crop_data_tool,
         analyze_correlation_tool,
-        predict_outcome_tool
+        predict_yield_tool,
+        predict_price_tool
     ]
     llm_with_tools = llm.bind_tools(tools)
 
@@ -387,11 +418,11 @@ def node_tool_caller(state: AgentState) -> dict:
     clean_history = [msg for msg in (state.messages or []) if not isinstance(msg, SystemMessage)]
 
     messages = [SystemMessage(content=system_instructions)]
-    
+
     # Context Summary injection
     if state.summary:
         messages.append(SystemMessage(content=f"Previous Context Summary:\n{state.summary}"))
-        
+
     messages.extend(clean_history)
     if not (clean_history and isinstance(clean_history[-1], HumanMessage) and clean_history[-1].content == state.user_query):
         messages.append(HumanMessage(content=state.user_query))
@@ -429,15 +460,17 @@ def node_tool_execution(state: AgentState) -> dict:
             print(f"\n=== EXECUTING TOOL {name} ===\n{json.dumps(args, indent=2)}\n================================\n")
 
             config = {"configurable": {"state": state}}
-            
+
             if name == "get_weather_analytics_tool":
                 md = get_weather_analytics_tool.invoke(args, config)
             elif name == "get_crop_data_tool":
                 md = get_crop_data_tool.invoke(args, config)
             elif name == "analyze_correlation_tool":
                 md = analyze_correlation_tool.invoke(args, config)
-            elif name == "predict_outcome_tool":
-                md = predict_outcome_tool.invoke(args, config)
+            elif name == "predict_yield_tool":
+                md = predict_yield_tool.invoke(args, config)
+            elif name == "predict_price_tool":
+                md = predict_price_tool.invoke(args, config)
             else:
                 md = f"Unknown tool: {name}"
 
@@ -452,9 +485,6 @@ def node_tool_execution(state: AgentState) -> dict:
         for tool_call in state.tool_calls:
             messages.append(ToolMessage(content=f"Error executing tool: {e}", tool_call_id=tool_call.get("id", "")))
         return {"messages": messages, "error": f"Tool execution failed: {e}", "tool_calls": []}
-
-
-
 
 # ---------------------------------------------------------------------------
 # MODULE: RAG GENERATION — Generation Node
@@ -490,21 +520,21 @@ def node_generation(state: AgentState) -> dict:
     if not (safe_history and isinstance(safe_history[-1], HumanMessage) and safe_history[-1].content == state.user_query):
         safe_history.append(HumanMessage(content=state.user_query))
 
-    messages = [SystemMessage(content=system_content)] 
-    
+    messages = [SystemMessage(content=system_content)]
+
     # Context Summary injection
     if state.summary:
         messages.append(SystemMessage(content=f"Previous Context Summary:\n{state.summary}"))
-        
+
     messages.extend(safe_history)
     response = llm.invoke(messages)
-    
+
     # Append the AI response to the state messages so it is remembered in the sliding window buffer
     final_messages = list(state.messages or [])
     if not (final_messages and isinstance(final_messages[-1], HumanMessage) and final_messages[-1].content == state.user_query):
         final_messages.append(HumanMessage(content=state.user_query))
     final_messages.append(AIMessage(content=response.content))
-    
+
     return {"final_response": response.content, "messages": final_messages}
 
 # ---------------------------------------------------------------------------
@@ -517,23 +547,21 @@ def node_memory_update(state: AgentState) -> dict:
         return state
 
     messages = list(state.messages or [])
-    
+
     # Keep the recent 10 messages in the sliding window buffer
     # If the buffer has more than 10 messages, summarize the older ones
     if len(messages) > 10:
         older_messages = messages[:-10]
         recent_messages = messages[-10:]
-        
+
         summary_prompt = build_memory_summary_prompt(older_messages, state.summary or "")
-        
+
         response = llm.invoke(summary_prompt)
         new_summary = response.content.strip()
-        
+
         return {"messages": recent_messages, "summary": new_summary}
-        
+
     return {"messages": messages}
-
-
 
 # ---------------------------------------------------------------------------
 # MODULE: REACT GRAPH — Edge Routers & Compiled Graph
@@ -542,7 +570,6 @@ def node_memory_update(state: AgentState) -> dict:
 def router_after_guardrails(state: AgentState) -> str:
     """Conditional edge router after ``node_guardrails``."""
     return "generation" if state.error else "task_extraction"
-
 
 def router_after_task_extraction(state: AgentState) -> str:
     """Conditional edge router after ``node_task_extraction``."""
@@ -554,7 +581,6 @@ def router_after_task_extraction(state: AgentState) -> str:
         return "generation"
     return "location_resolution"
 
-
 def router_after_location_resolution(state: AgentState) -> str:
     """Conditional edge router after ``node_location_resolution``."""
     if state.error:
@@ -563,7 +589,6 @@ def router_after_location_resolution(state: AgentState) -> str:
         return "clarification"
     return "tool_caller"
 
-
 def router_after_tool_caller(state: AgentState) -> str:
     """Conditional edge router after ``node_tool_caller``."""
     if state.error and not state.error.startswith("{"):
@@ -571,7 +596,6 @@ def router_after_tool_caller(state: AgentState) -> str:
     if state.tool_calls:
         return "tool_execution"
     return "generation"
-
 
 # ---------------------------------------------------------------------------
 # MODULE 7: REACT / STATE GRAPH AGENT — Graph Assembly

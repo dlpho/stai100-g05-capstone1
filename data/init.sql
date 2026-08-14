@@ -58,14 +58,36 @@ CREATE TABLE IF NOT EXISTS fact_retail_prices (
     UNIQUE (province_id, year, month)
 );
 
+CREATE TABLE fact_weather_monthly (
+    province_id INTEGER,
+    year INTEGER,
+    month INTEGER,
+    precipitation_sum REAL,
+    et0_fao_evapotranspiration REAL,
+    shortwave_radiation_sum REAL,
+    temperature_2m_mean REAL,
+    temperature_2m_max REAL,
+    temperature_2m_min REAL,
+    wind_gusts_10m_max REAL,
+    surface_pressure_mean REAL,
+    soil_moisture_0_to_100cm_mean REAL,
+    relative_humidity_2m_mean REAL,
+    extreme_rain_days INTEGER,
+    extreme_heat_days INTEGER,
+    PRIMARY KEY (province_id, year, month),
+    FOREIGN KEY (province_id) REFERENCES dim_province(province_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_city_prov_id ON dim_city_municipality (province_id);
 CREATE INDEX IF NOT EXISTS idx_brgy_city_id ON dim_barangay (city_municipality_id);
 
-CREATE VIEW IF NOT EXISTS v_monthly_market_summary AS
+CREATE VIEW v_monthly_market_summary AS
 SELECT
     l.province_id,
     l.region_name,
     l.province_name,
+    l.latitude,
+    l.longitude,
     p.year,
     p.month,
     p.volume_metric_tons,
@@ -78,3 +100,58 @@ LEFT JOIN fact_retail_prices pr
        ON p.province_id = pr.province_id
       AND p.year = pr.year
       AND p.month = pr.month;
+
+CREATE VIEW v_ml_market_features AS
+SELECT
+    curr.province_id,
+    curr.province_name,
+    curr.latitude,
+    curr.longitude,
+    curr.year,
+    curr.month,
+    curr.retail_price_php,
+    curr.yield_mt_per_ha,
+    curr.volume_metric_tons,
+    LAG(curr.retail_price_php, 1) OVER w AS price_lag1,
+    LAG(curr.retail_price_php, 12) OVER w AS price_lag12,
+    LAG(curr.yield_mt_per_ha, 1) OVER w AS yield_lag1,
+    LAG(curr.yield_mt_per_ha, 12) OVER w AS hist_yield,
+    LAG(curr.volume_metric_tons, 1) OVER w AS production_lag1,
+    LAG(curr.retail_price_php, 12) OVER w AS hist_price
+FROM v_monthly_market_summary curr
+WINDOW w AS (PARTITION BY curr.province_name ORDER BY curr.year, curr.month);
+
+CREATE VIEW v_ml_full_dataset AS
+SELECT
+    p.province_name,
+    p.latitude,
+    p.longitude,
+    w.year AS current_year,
+    w.month,
+    m.yield_mt_per_ha AS target_yield,
+    m.retail_price_php AS target_price,
+    m.volume_metric_tons AS target_production,
+    m.price_lag1,
+    m.price_lag12,
+    m.yield_lag1,
+    m.hist_yield,
+    m.production_lag1,
+    m.hist_price,
+    w.precipitation_sum, 
+    w.et0_fao_evapotranspiration, 
+    w.shortwave_radiation_sum,
+    w.temperature_2m_mean, 
+    w.temperature_2m_max, 
+    w.temperature_2m_min,
+    w.wind_gusts_10m_max, 
+    w.surface_pressure_mean, 
+    w.soil_moisture_0_to_100cm_mean,
+    w.relative_humidity_2m_mean, 
+    w.extreme_rain_days, 
+    w.extreme_heat_days
+FROM fact_weather_monthly w
+JOIN dim_province p ON w.province_id = p.province_id
+LEFT JOIN v_ml_market_features m 
+    ON w.province_id = m.province_id 
+   AND w.year = m.year 
+   AND w.month = m.month;

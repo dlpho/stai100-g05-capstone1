@@ -107,34 +107,34 @@ graph TD
 
     %% Elements
     Input([Farmer Input Query]):::io
-    
+
     subgraph Pipeline ["LangGraph ReAct Pipeline"]
         Node1["🛡️ 1. Guardrails Node<br/>Checks safety, injections,<br/>and agricultural disclaimers"]:::check
-        
+
         Node2["🏷️ 2. Task Classifier<br/>Routes query intent<br/>(forecast, analytics, chat)"]:::route
-        
+
         Node3["🔍 3. Tool Caller<br/>Extracts parameter slots &<br/>resolves location coordinates"]:::service
-        
+
         Node4["⚡ 4. Tool Execution<br/>Queries Open-Meteo API &<br/>aggregates data with Pandas"]:::service
-        
+
         Node5["✍️ 5. Generation Node<br/>Translates metrics into plain,<br/>factual summaries"]:::gen
     end
-    
+
     Output([Formatted Response]):::io
 
     %% Connections & Conditional Edges
     Input --> Node1
-    
+
     Node1 -->|Safe / Valid| Node2
     Node1 -->|Violation / Disclaimer| Node5
-    
+
     Node2 -->|Forecast / Analytics| Node3
     Node2 -->|General Chat / Off-Topic| Node5
-    
+
     %% ReAct Loop (Reasoning + Acting)
     Node3 -->|Plan: Tool Call / Slots Filled| Node4
     Node4 -->|Act: Append ToolMessage Observation| Node3
-    
+
     Node3 -->|Observe: No More Tool Calls / Location Missing| Node5
 
     Node5 --> Output

@@ -2,7 +2,7 @@
 WeatherTato — LLM Prompt Constants
 
 All static and template prompt strings are defined here as module-level constants
-Nodes in llm_service.py import these and use them directly, keeping orchestration 
+Nodes in llm_service.py import these and use them directly, keeping orchestration
 logic separate from prompt engineering.
 """
 
@@ -45,11 +45,11 @@ Output:
 
 User: "Predict palay yield in Pampanga for Q3 2025"
 Output:
-{"action": "PREDICT_OUTCOME", "confidence": 0.96, "slots": {"location": "Pampanga", "time_period": {"granularity": "QUARTER", "value": "Q3 2025", "start_date": "2025-07-01", "end_date": "2025-09-30"}, "crop_type": "PALAY", "outcome_metric": "YIELD"}}
+{"action": "PREDICT_YIELD", "confidence": 0.96, "slots": {"location": "Pampanga", "time_period": {"granularity": "QUARTER", "value": "Q3 2025", "start_date": "2025-07-01", "end_date": "2025-09-30"}, "crop_type": "PALAY", "outcome_metric": "YIELD"}}
 
 User: "What about price?" (follow-up after palay yield query)
 Output:
-{"action": "GET_CROP_DATA", "confidence": 0.93, "slots": {"outcome_metric": "PRICE"}}
+{"action": "PREDICT_PRICE", "confidence": 0.93, "slots": {"location": "Pampanga", "time_period": {"granularity": "QUARTER", "value": "Q3 2025", "start_date": "2025-07-01", "end_date": "2025-09-30"}, "crop_type": "PALAY", "outcome_metric": "PRICE"}}
 
 User: "What can you do?"
 Output:
@@ -78,18 +78,19 @@ You MUST output ONLY a valid JSON object. No explanation, no markdown fences.
 """
 
 
-def build_slot_system_prompt(topic: str, allowed_actions: list[str], user_query: str) -> str:
+def build_slot_system_prompt(topic: str, allowed_actions: list[str], user_query: str, today_str: str) -> str:
     """Assembles the full slot extraction system prompt from modular sections.
 
     Args:
         topic: The guardrail-classified topic (e.g. 'WEATHER', 'CROP_OUTCOMES').
         allowed_actions: The list of valid actions for this topic.
         user_query: The current user query (appended at the end for context).
-
+        today_str: The current date in YYYY-MM-DD format.
     Returns:
         str: The complete system prompt string ready to inject into the LLM call.
     """
     header = (
+        f"Today's Date: {today_str}.\n"
         "You are a data extraction assistant for an agricultural weather chatbot.\n"
         f"Extract the user's intent and relevant slots. The query has been pre-classified as topic: {topic}.\n\n"
         f"Allowed actions for topic {topic}: {', '.join(allowed_actions)}.\n"

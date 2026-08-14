@@ -11,7 +11,6 @@ cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
-
 # ---------------------------------------------------------------------------
 # Monthly aggregation config (WeatherTato monthly weather feature set)
 # ---------------------------------------------------------------------------
@@ -30,7 +29,6 @@ EXTREME_RAIN_THRESHOLD_MM = 54.0   # a day is "extreme rainfall" if precip >= th
 EXTREME_HEAT_THRESHOLD_C = 34.0    # a day is "extreme heat" if daily max temp >= this
 
 DEFAULT_WEATHER_VARS = list(MONTHLY_AGG.keys())
-
 
 def fetch_monthly_weather(
     lat: float,
@@ -100,7 +98,6 @@ def fetch_monthly_weather(
     derived_cols = [c for c in ("extreme_rain_days", "extreme_heat_days") if c in monthly.columns]
     return monthly[["year", "month"] + var_cols + derived_cols]
 
-
 def get_weather_analytics(
     lat: float,
     lon: float,
@@ -121,12 +118,12 @@ def get_weather_analytics(
         "daily": daily_vars,
         "timezone": "Asia/Manila"
     }
-    
+
     responses = openmeteo.weather_api(url, params=params)
     response = responses[0]
-    
+
     md_output = f"### Historical Weather Data (Analytics) for {lat}, {lon}\n\n"
-    
+
     if daily_vars and response.Daily():
         daily = response.Daily()
         daily_data = {"date": pd.date_range(
@@ -135,22 +132,22 @@ def get_weather_analytics(
             freq = pd.Timedelta(seconds = daily.Interval()),
             inclusive = "left"
         ).tz_convert("Asia/Manila")}
-        
+
         for i, var in enumerate(daily_vars):
             daily_data[var] = daily.Variables(i).ValuesAsNumpy()
-            
+
         df = pd.DataFrame(data=daily_data)
-        
+
         # 1. Map Time Buckets
         freq_map = {"day": "D", "month": "ME", "year": "YE"}
         freq = freq_map.get(granularity, "D")
         grouped = df.set_index("date").groupby(pd.Grouper(freq=freq))
-        
+
         # 2. Apply Intraday Math Equations
         agg_funcs = {"mean": "mean", "max": "max", "min": "min"}
         agg_func = agg_funcs.get(inner_aggregation, "mean")
         processed_df = getattr(grouped, agg_func)()
-        
+
         # 3. Apply Conditional Extreme Filtering Logic
         if find_extreme == "highest":
             # Find row with max value for the first variable
@@ -163,12 +160,12 @@ def get_weather_analytics(
             target_idx = processed_df[target_var].idxmin()
             processed_df = processed_df.loc[[target_idx]]
             md_output += f"**Isolated Lowest Period ({target_var})**\n\n"
-            
+
         # Reset index so date is a column again
         processed_df = processed_df.reset_index()
-        
+
         md_output += f"#### Aggregated Data ({granularity} / {inner_aggregation})\n" + processed_df.to_markdown(index=False) + "\n\n"
-        
+
     return md_output
 
 
@@ -182,12 +179,12 @@ def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
         "timezone": "Asia/Manila",
         "forecast_days": 14
     }
-    
+
     responses = openmeteo.weather_api(url, params=params)
     response = responses[0]
-    
+
     md_output = f"### Weather Forecast for {lat}, {lon}\n\n"
-    
+
     if daily_vars and response.Daily():
         daily = response.Daily()
         daily_data = {"date": pd.date_range(
@@ -196,13 +193,13 @@ def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
             freq = pd.Timedelta(seconds = daily.Interval()),
             inclusive = "left"
         ).tz_convert("Asia/Manila")}
-        
+
         for i, var in enumerate(daily_vars):
             daily_data[var] = daily.Variables(i).ValuesAsNumpy()
-            
+
         daily_df = pd.DataFrame(data=daily_data)
         md_output += "#### Daily Forecast\n" + daily_df.to_markdown(index=False) + "\n\n"
-        
+
         # Pre-compute exact aggregates to prevent LLM math hallucinations
         if not daily_df.empty:
             md_output += "#### Summary Statistics (Exact Computations)\n"
@@ -217,5 +214,5 @@ def get_weather_forecast(lat: float, lon: float, daily_vars: list) -> str:
                 if "mean" in var or ("temperature" in var and "max" not in var and "min" not in var):
                     md_output += f"- Average {var}: {daily_df[var].mean():.2f}\n"
             md_output += "\n"
-        
+
     return md_output

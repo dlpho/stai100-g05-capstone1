@@ -52,7 +52,7 @@ class ExtractedSlots(BaseModel):
 
 class TaskExtraction(BaseModel):
     """Task and slot extraction structured output."""
-    action: Literal["GET_WEATHER_DATA", "GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_OUTCOME", "DESCRIBE_CAPABILITIES", "UNKNOWN"]
+    action: Literal["GET_WEATHER_DATA", "GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_PRICE", "PREDICT_YIELD", "DESCRIBE_CAPABILITIES", "UNKNOWN"]
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     slots: ExtractedSlots
 
