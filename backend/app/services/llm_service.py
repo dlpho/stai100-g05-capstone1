@@ -21,8 +21,9 @@ from core.prompts import (
     build_memory_summary_prompt,
     GENERATION_PROMPT,
 )
-from services.meteo_service import get_weather_analytics, get_weather_forecast
-from services.location_search import search_location
+from services.meteo_service import get_weather_analytics
+from langchain_core.runnables import RunnableConfig
+from services.location_resolve import resolve_location_sqlite
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
 
 # Initialize LLM
@@ -144,7 +145,7 @@ def node_task_extraction(state: AgentState) -> dict:
         "GET_WEATHER_DATA": {"location", "time_period", "weather_variables"},
         "GET_CROP_DATA": {"location", "time_period", "crop_type", "outcome_metric"},
         "ANALYZE_CORRELATION": {"location", "time_period", "weather_variables", "crop_type", "outcome_metric"},
-        "PREDICT_OUTCOME": {"location", "time_period", "weather_variables", "crop_type", "outcome_metric"},
+        "PREDICT_OUTCOME": {"location", "time_period", "crop_type"},
     }.get(action, set())
 
     # Inherit only the slots relevant to the new action
@@ -221,42 +222,24 @@ def node_location_resolution(state: AgentState) -> dict:
     if not location_str:
         return {}
         
-    loc_upper = location_str.upper()
-    supported_provinces = ["PAMPANGA", "BULACAN", "NUEVA ECIJA", "TARLAC", "BATAAN", "ZAMBALES", "AURORA"]
+    loc_entity, status = resolve_location_sqlite(location_str)
     
-    is_supported = any(prov in loc_upper for prov in supported_provinces)
-    
-    if not is_supported:
+    if status == "UNSUPPORTED_REGION":
         return {"error": "Unsupported location: We currently only support provinces in Region III."}
+    elif status == "AMBIGUOUS" or status == "NOT_FOUND":
+        return {"is_ready_for_tools": False, "missing_slots": ["location"]}
         
-    mock_entity = LocationEntity(
-        latitude="15.0",
-        longitude="120.0", 
-        barangay=location_str
-    )
-    
-    return {"location": mock_entity}
+    return {"location": loc_entity}
 
 
 # ---------------------------------------------------------------------------
 # MODULE: TOOL USE — Geocoding & Weather Tools
 # ---------------------------------------------------------------------------
 
-def _resolve_location(location_str: str) -> LocationEntity | None:
-    """Resolve a free-text location string to lat/lon via the offline PSGC geocoder."""
-    if not location_str:
-        return None
-    ref_lines = search_location(location_str)
-    if ref_lines:
-        parts = [p.strip() for p in ref_lines[0].split("|")]
-        if len(parts) >= 4:
-            return LocationEntity(latitude=parts[-2], longitude=parts[-1], barangay=location_str)
-    # Default to Manila coordinates when location cannot be resolved
-    return LocationEntity(latitude="14.5995", longitude="120.9842", barangay=location_str)
-
+# Removed _resolve_location and location_search dependency
 
 @tool
-def get_weather_analytics_tool(location: str, start_date: str, end_date: str, daily_vars: list[str], granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none") -> str:
+def get_weather_analytics_tool(location: str, start_date: str, end_date: str, daily_vars: list[str], granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none", config: RunnableConfig = None) -> str:
     """Gets historical weather analytics data for a location.
     Args:
         location: The name of the city, municipality, or province.
@@ -267,26 +250,42 @@ def get_weather_analytics_tool(location: str, start_date: str, end_date: str, da
         inner_aggregation: 'mean', 'max', or 'min'. Default 'mean'.
         find_extreme: 'highest', 'lowest', or 'none'. Default 'none'.
     """
-    loc = _resolve_location(location)
-    if not loc:
-        return "Error: Location not provided."
+    state: AgentState = config.get("configurable", {}).get("state")
+    if not state or not state.location:
+        return "Error: Location not provided or resolved."
+        
+    loc = state.location
+    active_action = state.active_action
+    
+    if active_action == "GET_WEATHER_DATA":
+        lat = loc.latitude
+        lon = loc.longitude
+    else:
+        lat = loc.province_latitude
+        lon = loc.province_longitude
+
     if not daily_vars:
         daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
-    return get_weather_analytics(float(loc.latitude), float(loc.longitude), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
+    return get_weather_analytics(float(lat), float(lon), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
 
 @tool
-def get_crop_data_tool(location: str, crop_type: str, time_period_value: str) -> str:
+def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, config: RunnableConfig = None) -> str:
     """Gets historical crop production data for a location.
     Args:
         location: The name of the city, municipality, or province.
         crop_type: The type of crop (e.g. PALAY).
         time_period_value: The time period (e.g. 2024, Q3 2025).
     """
-    return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {location} ({time_period_value}) | 1500 MT |"
+    state: AgentState = config.get("configurable", {}).get("state")
+    if not state or not state.location:
+        return "Error: Location not provided or resolved."
+        
+    resolved_prov = state.location.province
+    return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
 
 
 @tool
-def analyze_correlation_tool(location: str, crop_type: str, weather_variables: List[str], time_period_value: str) -> str:
+def analyze_correlation_tool(location: str, crop_type: str, weather_variables: List[str], time_period_value: str, config: RunnableConfig = None) -> str:
     """Analyzes the correlation between weather variables and crop outcomes.
     Args:
         location: The location.
@@ -294,22 +293,32 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
         weather_variables: List of weather variables to correlate.
         time_period_value: The time period.
     """
+    state: AgentState = config.get("configurable", {}).get("state")
+    if not state or not state.location:
+        return "Error: Location not provided or resolved."
+        
+    resolved_prov = state.location.province
     vars_str = ", ".join(weather_variables)
-    return f"Correlation Analysis for {crop_type} in {location} ({time_period_value}):\nStrong positive correlation found with {vars_str}."
+    return f"Correlation Analysis for {crop_type} in {resolved_prov} ({time_period_value}):\nStrong positive correlation found with {vars_str}."
 
 
 @tool
-def predict_outcome_tool(location: str, crop_type: str, time_period_value: str, weather_variables: Optional[List[str]] = None) -> str:
-    """Predicts crop outcomes. If `weather_variables` is omitted, the model will deterministically use the fixed POC default feature set. Explicitly supplied variables will override the defaults.
+def predict_outcome_tool(location: str, crop_type: str, time_period_value: str, config: RunnableConfig = None) -> str:
+    """Predicts crop outcomes using the production MLR model.
+    The production prediction model uses a fixed feature set (precipitation_sum, temperature_2m_mean, temperature_2m_max, temperature_2m_min).
     Args:
         location: The location.
         crop_type: The type of crop.
         time_period_value: The time period.
-        weather_variables: Optional list of weather variables.
     """
-    vars_used = weather_variables if weather_variables else ["precipitation_sum", "temperature_2m_mean"]
+    state: AgentState = config.get("configurable", {}).get("state")
+    if not state or not state.location:
+        return "Error: Location not provided or resolved."
+        
+    resolved_prov = state.location.province
+    vars_used = ["precipitation_sum", "temperature_2m_mean", "temperature_2m_max", "temperature_2m_min"]
     vars_str = ", ".join(vars_used)
-    return f"Prediction for {crop_type} in {location} ({time_period_value}):\nBased on {vars_str}, the estimated yield is 4.2 MT/ha."
+    return f"Prediction for {crop_type} in {resolved_prov} ({time_period_value}):\nBased on the fixed production features ({vars_str}), the estimated yield is 4.2 MT/ha."
 
 
 # ---------------------------------------------------------------------------
@@ -384,14 +393,16 @@ def node_tool_execution(state: AgentState) -> dict:
 
             print(f"\n=== EXECUTING TOOL {name} ===\n{json.dumps(args, indent=2)}\n================================\n")
 
+            config = {"configurable": {"state": state}}
+            
             if name == "get_weather_analytics_tool":
-                md = get_weather_analytics_tool.invoke(args)
+                md = get_weather_analytics_tool.invoke(args, config)
             elif name == "get_crop_data_tool":
-                md = get_crop_data_tool.invoke(args)
+                md = get_crop_data_tool.invoke(args, config)
             elif name == "analyze_correlation_tool":
-                md = analyze_correlation_tool.invoke(args)
+                md = analyze_correlation_tool.invoke(args, config)
             elif name == "predict_outcome_tool":
-                md = predict_outcome_tool.invoke(args)
+                md = predict_outcome_tool.invoke(args, config)
             else:
                 md = f"Unknown tool: {name}"
 
@@ -513,6 +524,8 @@ def router_after_location_resolution(state: AgentState) -> str:
     """Conditional edge router after ``node_location_resolution``."""
     if state.error:
         return "generation"
+    if not state.is_ready_for_tools:
+        return "clarification"
     return "tool_caller"
 
 

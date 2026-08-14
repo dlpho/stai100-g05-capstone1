@@ -21,12 +21,16 @@ class UserQuery(BaseModel):
 
 class LocationEntity(BaseModel):
     """A resolved location entity with geographic coordinates."""
-    barangay: Optional[str] = ""
-    municipality_city: Optional[str] = ""
-    province: Optional[str] = ""
-    region: Optional[str] = ""
-    latitude: Optional[str] = ""
-    longitude: Optional[str] = ""
+    original_query: str
+    resolved_name: str
+    granularity: Literal["barangay", "municipality_city", "province"]
+    province: str
+    region: str
+    latitude: float
+    longitude: float
+    province_latitude: float
+    province_longitude: float
+    province_id: Optional[int] = None
 
 
 class TimePeriod(BaseModel):
