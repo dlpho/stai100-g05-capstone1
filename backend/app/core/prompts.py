@@ -20,7 +20,7 @@ SLOT_DEFINITIONS = """\
 Slot definitions:
 - location: string — the geographic area (Philippine province, city, municipality)
 - time_period: object — granularity: QUARTER | YEAR | MONTH, value: string (e.g. 'Q3 2025', '2024', 'January 2025'), start_date: YYYY-MM-DD, end_date: YYYY-MM-DD
-- weather_variables: list — values from: RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, WIND_GUST, SOIL_MOISTURE
+- weather_variables: list — values from: ALL, RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, SURFACE_PRESSURE, SOIL_MOISTURE. (Use ALL if the user asks for all weather variables or asks to analyze weather generally)
 - crop_type: string — PALAY
 - outcome_metric: string — YIELD, PRODUCTION, or PRICE
 

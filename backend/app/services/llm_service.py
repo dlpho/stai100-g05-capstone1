@@ -228,8 +228,10 @@ def node_location_resolution(state: AgentState) -> dict:
     
     if status == "UNSUPPORTED_REGION":
         return {"error": "Unsupported location: We currently only support provinces in Region III."}
-    elif status == "AMBIGUOUS" or status == "NOT_FOUND":
+    elif status == "AMBIGUOUS":
         return {"is_ready_for_tools": False, "missing_slots": ["location"]}
+    elif status == "NOT_FOUND":
+        return {"error": f"Location '{location_str}' could not be resolved using the current Region III location database. WeatherTato currently supports locations contained in its Region III dataset."}
         
     return {"location": loc_entity}
 
@@ -269,13 +271,16 @@ def get_monthly_weather_tool(start_date: str, end_date: str, daily_vars: list[st
     validated_vars = []
     discarded_vars = []
     if daily_vars:
-        for v in daily_vars:
-            if v in DEFAULT_WEATHER_VARS:
-                validated_vars.append(v)
-            else:
-                discarded_vars.append(v)
+        if "ALL" in daily_vars:
+            validated_vars = list(DEFAULT_WEATHER_VARS)
+        else:
+            for v in daily_vars:
+                if v in DEFAULT_WEATHER_VARS:
+                    validated_vars.append(v)
+                else:
+                    discarded_vars.append(v)
     if not validated_vars:
-        validated_vars = DEFAULT_WEATHER_VARS
+        validated_vars = list(DEFAULT_WEATHER_VARS)
 
     try:
         df = fetch_monthly_weather(float(lat), float(lon), start_date, end_date, daily_vars=validated_vars)
@@ -328,7 +333,7 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
     Args:
         location: The location (province).
         crop_type: The type of crop (e.g. PALAY).
-        weather_variables: Variables to correlate (RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, SOIL_MOISTURE).
+        weather_variables: Variables to correlate (ALL, RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, SURFACE_PRESSURE, SOIL_MOISTURE). Pass ["ALL"] to analyze all variables.
         time_period_value: The time period (e.g. "2024"). Uses full history when unspecified.
     """
     state: AgentState = config.get("configurable", {}).get("state")
@@ -336,9 +341,12 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
         return "Error: Location not provided or resolved."
 
     province = state.location.province
-    vars_ = [WEATHER_VAR_MAP[v] for v in weather_variables if v in WEATHER_VAR_MAP]
-    if not vars_:
+    if "ALL" in weather_variables:
         vars_ = list(DEFAULT_WEATHER_VARS)
+    else:
+        vars_ = [WEATHER_VAR_MAP[v] for v in weather_variables if v in WEATHER_VAR_MAP]
+        if not vars_:
+            vars_ = list(DEFAULT_WEATHER_VARS)
 
     start_date, end_date = _parse_correlation_period(time_period_value)
 
@@ -362,7 +370,24 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
     
     # Build markdown table manually since it's nested dicts
     sample_size = len(obs_df)
-    md_lines = [f"Correlation for {crop_type} in {province} ({start_date} to {end_date}, {selected_lag}-month lag, sample size n={sample_size}):\n"]
+    # Count successes and failures
+    success_count = 0
+    fail_count = 0
+    for v in vars_:
+        # A variable is successful if at least one outcome produced a correlation
+        v_results = r_matrix.get(v, {})
+        has_data = any(v_results.get(o) is not None for o in ["YIELD", "PRODUCTION", "PRICE"])
+        if has_data:
+            success_count += 1
+        else:
+            fail_count += 1
+
+    md_lines = [
+        f"Requested variables: {len(vars_)}",
+        f"Successfully analyzed: {success_count}",
+        f"Unavailable/insufficient data: {fail_count}\n",
+        f"Correlation for {crop_type} in {province} ({start_date} to {end_date}, {selected_lag}-month lag, sample size n={sample_size}):\n"
+    ]
     md_lines.append("| Weather Variable | YIELD | PRODUCTION | PRICE |")
     md_lines.append("|---|---|---|---|")
     
