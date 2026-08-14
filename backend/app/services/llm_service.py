@@ -274,23 +274,6 @@ def get_weather_analytics_tool(location: str, start_date: str, end_date: str, da
         daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
     return get_weather_analytics(float(loc.latitude), float(loc.longitude), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
 
-
-@tool
-def get_weather_forecast_tool(location: str, daily_vars: list[str]) -> str:
-    """Gets future weather forecast for a location.
-    Dates are always for the upcoming week from today.
-    Args:
-        location: The name of the city, municipality, or province.
-        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
-    """
-    loc = _resolve_location(location)
-    if not loc:
-        return "Error: Location not provided."
-    if not daily_vars:
-        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
-    return get_weather_forecast(float(loc.latitude), float(loc.longitude), daily_vars)
-
-
 @tool
 def get_crop_data_tool(location: str, crop_type: str, time_period_value: str) -> str:
     """Gets historical crop production data for a location.
@@ -349,7 +332,6 @@ def node_tool_caller(state: AgentState) -> dict:
 
     tools = [
         get_weather_analytics_tool,
-        get_weather_forecast_tool,
         get_crop_data_tool,
         analyze_correlation_tool,
         predict_outcome_tool
@@ -404,8 +386,6 @@ def node_tool_execution(state: AgentState) -> dict:
 
             if name == "get_weather_analytics_tool":
                 md = get_weather_analytics_tool.invoke(args)
-            elif name == "get_weather_forecast_tool":
-                md = get_weather_forecast_tool.invoke(args)
             elif name == "get_crop_data_tool":
                 md = get_crop_data_tool.invoke(args)
             elif name == "analyze_correlation_tool":
