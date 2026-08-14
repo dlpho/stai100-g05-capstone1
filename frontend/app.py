@@ -102,50 +102,98 @@ def page_chat():
 
 def docs():
     st.logo(logo)
-    st.title("📚 Documentation")
-    st.markdown("### ❓ Questions You Can Ask")
+    st.markdown("# WeatherTato Capabilities & Limitations")
     st.markdown("""
-    * **Forecasts:** Ask about upcoming conditions (e.g., *"Will it rain tomorrow in Davao?"*)
-    * **Historical Analytics:** Ask about past weather trends (e.g., *"What was the monthly temperature in Cebu in 2024?"*)
-    * **Extreme Weather:** Find peak records (e.g., *"Which year had the highest rainfall in Makati?"*)
+    Welcome to the technical overview of WeatherTato. This guide outlines what the system is designed to do and the boundaries of its current implementation.
     """)
     
-    st.markdown("### 📊 Supported Variables")
-    st.markdown("""
-    * **Temperature:** Peak, minimum, and mean temperature
-    * **Rainfall:** Precipitation sum
-    * **Wind Speed:** Daily wind gusts & speed
-    * **Soil Health:** Soil moisture (0-100cm depth) & Soil temperature
-    * **Air Quality/Comfort:** Relative humidity
-    * **Evapotranspiration (ET0):** Crop water loss metrics
-    """)
+    st.markdown("### What WeatherTato CAN Handle")
     
-    st.markdown("### 📍 Supported Locations")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.success("**Historical Weather Analysis**\n\nRetrieves and aggregates historical meteorological data (temperature, rainfall, soil moisture, etc.) for any location in the Philippines.")
+        st.success("**Crop Yield Analytics**\n\nAccesses historical palay (rice) production volume, yield (MT/ha), and retail prices specifically for Region III (Central Luzon).")
+    
+    with col2:
+        st.success("**Statistical Correlation**\n\nCalculates Pearson correlation coefficients between lagged weather variables and agricultural outcomes over specified time periods.")
+        st.success("**Machine Learning Prediction**\n\nUses Scikit-Learn Lasso regression models to predict palay yield and prices based on historical weather patterns.")
+    
+    st.success("**Literature Grounding (RAG)**\n\nCross-references statistical findings with a curated vector database of agronomic literature to explain *why* certain correlations exist.")
+    
+    st.markdown("---")
+    
+    st.markdown("### What WeatherTato CANNOT Handle")
+    
+    col3, col4 = st.columns(2)
+    with col3:
+        st.error("**Future Weather Forecasts**\n\nThe system is strictly retrospective and analytical. It cannot predict if it will rain tomorrow or provide 7-day weather forecasts.")
+        st.error("**Farming & Agronomic Advice**\n\nWeatherTato is an analytical tool, not an agronomist. It will not recommend fertilizer application rates, planting dates, or pest control strategies.")
+    
+    with col4:
+        st.error("**Outside Region III Crop Data**\n\nWhile weather can be queried nationwide, agricultural records (yield/production) are exclusively constrained to the provinces of Central Luzon.")
+        st.error("**Non-Palay Crops**\n\nThe current database and predictive models are trained solely on Palay (rice). Corn and other crops are unsupported.")
+    
+    st.markdown("---")
+    
+    st.markdown("### Backend Architecture Overview")
     st.markdown("""
-    You can query coordinates at any level in the Philippines:
-    * **Barangay** (e.g., *Barangay Poblacion, Alicia, Bohol*)
-    * **Municipality / City** (e.g., *Makati City*)
-    * **Province** (e.g., *Pangasinan*)
+    WeatherTato operates on a **LangGraph** orchestration pipeline:
+    1. **Guardrails:** Intercepts unsupported queries (like farming advice or future forecasts) before they reach the execution engine.
+    2. **Intent Extraction:** Powered by DeepSeek-V4-Flash, the agent dynamically extracts locations, dates, and variables from natural language.
+    3. **Deterministic Tools:** Instead of hallucinating numbers, the agent invokes dedicated Python scripts to query SQLite databases or Open-Meteo APIs.
+    4. **Context Synthesis:** Final answers are synthesized by weaving together raw statistical data and retrieved agronomic literature.
     """)
 
 
 def samples():
     st.logo(logo)
-    st.title("💡 Sample Queries")
-    st.markdown("Here are 10 representative queries that exhibit the wide range of capabilities of WeatherTato. Try copying and pasting any of these into the chat!")
+    st.title("Sample Queries")
+    st.markdown("Click any sample query below to instantly test it in the chat! These queries exhibit the full range of WeatherTato's analytical capabilities.")
     
-    st.markdown("""
-1. **Historical Weather Data:** "What was the total rainfall and peak temperature in Nueva Ecija from June to October 2023?"
-2. **Crop Yield Analytics:** "What was the recorded palay yield in Metric Tons per Hectare (MT/ha) for Pampanga in 2022?"
-3. **Yield vs. Weather Correlation:** "How did the extreme heat days correlate with palay production in Tarlac between 2015 and 2023?"
-4. **Machine Learning Yield Prediction:** "Predict the palay yield for Bulacan in 2024 based on the antecedent growing season weather."
-5. **Machine Learning Price Prediction:** "Based on the climatic conditions, predict the retail price of palay in Zambales for 2024."
-6. **Extremes and Anomalies:** "Which year had the highest recorded rainfall in Aurora between 2010 and 2020?"
-7. **Multi-Variable Agronomic Analysis:** "How does soil moisture and shortwave radiation affect rice production in Bataan?"
-8. **Literature-Grounded Explanations:** "According to literature, how does prolonged heat stress (extreme heat days) impact palay yield?"
-9. **Complex Time Periods:** "What was the average temperature and evapotranspiration in Nueva Ecija during Q3 2023?"
-10. **Agent Capabilities:** "What kind of agricultural and weather data can you analyze for me?"
-    """)
+    st.markdown("#### Historical Weather & Extremes")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("What was the total rainfall and peak temperature in Nueva Ecija from June to October 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "What was the total rainfall and peak temperature in Nueva Ecija from June to October 2023?"
+            st.switch_page(page_chat_obj)
+        if st.button("Which year had the highest recorded rainfall in Aurora between 2010 and 2020?", use_container_width=True):
+            st.session_state.pending_prompt = "Which year had the highest recorded rainfall in Aurora between 2010 and 2020?"
+            st.switch_page(page_chat_obj)
+    with c2:
+        if st.button("What was the average temperature and evapotranspiration in Nueva Ecija during Q3 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "What was the average temperature and evapotranspiration in Nueva Ecija during Q3 2023?"
+            st.switch_page(page_chat_obj)
+        if st.button("What kind of agricultural and weather data can you analyze for me?", use_container_width=True):
+            st.session_state.pending_prompt = "What kind of agricultural and weather data can you analyze for me?"
+            st.switch_page(page_chat_obj)
+
+    st.markdown("#### Crop Yield & Analytics")
+    c3, c4 = st.columns(2)
+    with c3:
+        if st.button("What was the recorded palay yield in Metric Tons per Hectare for Pampanga in 2022?", use_container_width=True):
+            st.session_state.pending_prompt = "What was the recorded palay yield in Metric Tons per Hectare for Pampanga in 2022?"
+            st.switch_page(page_chat_obj)
+    with c4:
+        if st.button("Compare the palay production volume of Pampanga and Tarlac during the 2022 wet season.", use_container_width=True):
+            st.session_state.pending_prompt = "Compare the palay production volume of Pampanga and Tarlac during the 2022 wet season."
+            st.switch_page(page_chat_obj)
+
+    st.markdown("#### Machine Learning & Correlation")
+    c5, c6 = st.columns(2)
+    with c5:
+        if st.button("Predict the palay yield for Bulacan in 2024 based on the antecedent growing season weather.", use_container_width=True):
+            st.session_state.pending_prompt = "Predict the palay yield for Bulacan in 2024 based on the antecedent growing season weather."
+            st.switch_page(page_chat_obj)
+        if st.button("How did extreme heat days correlate with palay production in Tarlac between 2015 and 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "How did extreme heat days correlate with palay production in Tarlac between 2015 and 2023?"
+            st.switch_page(page_chat_obj)
+    with c6:
+        if st.button("Based on climatic conditions, predict the retail price of palay in Zambales for 2024.", use_container_width=True):
+            st.session_state.pending_prompt = "Based on climatic conditions, predict the retail price of palay in Zambales for 2024."
+            st.switch_page(page_chat_obj)
+        if st.button("According to literature, how does prolonged heat stress impact palay yield?", use_container_width=True):
+            st.session_state.pending_prompt = "According to literature, how does prolonged heat stress impact palay yield?"
+            st.switch_page(page_chat_obj)
 
 
 def settings():

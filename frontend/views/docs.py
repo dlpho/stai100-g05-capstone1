@@ -1,45 +1,44 @@
 import streamlit as st
 
-st.markdown("# 📖 WeatherTato Documentation")
-st.markdown("Welcome to WeatherTato! This agentic AI assistant is specialized in analyzing the impact of historical weather on palay (rice) agriculture in Central Luzon.")
-
-st.markdown("### ❓ Questions You Can Ask")
+st.markdown("# WeatherTato Capabilities & Limitations")
 st.markdown("""
-* **Historical Weather:** Ask about past weather trends (e.g., *"What was the monthly temperature in Nueva Ecija in 2023?"*)
-* **Crop Analytics:** Query agricultural data (e.g., *"What was the palay yield in Pampanga in 2022?"*)
-* **Correlation Analysis:** Ask how weather affects crops (e.g., *"How does rainfall correlate with palay production in Tarlac?"*)
-* **Yield Prediction:** Request machine-learning forecasts for current/past seasons (e.g., *"Predict the palay yield for Bulacan in 2024 based on the weather."*)
+Welcome to the technical overview of WeatherTato. This guide outlines what the system is designed to do and the boundaries of its current implementation.
 """)
 
-st.warning("⚠️ **Note:** WeatherTato does NOT provide future weather forecasts or direct farming/agronomic advice. It is strictly an analytical tool for historical and statistical insights.")
+st.markdown("### What WeatherTato CAN Handle")
 
-st.markdown("### 📊 Supported Variables")
-st.markdown("""
-* **Agricultural:** Palay Yield (MT/ha), Production Volume (MT), Retail Price (PHP/kg)
-* **Temperature:** Maximum, Minimum, and Mean Temperature
-* **Precipitation:** Rainfall sum, Extreme Rain Days
-* **Soil & Environment:** Soil Moisture, Surface Pressure, Shortwave Radiation
-* **Wind:** Maximum Wind Gusts
-* **Evapotranspiration (ET0):** Crop water loss metrics
-""")
+col1, col2 = st.columns(2)
+with col1:
+    st.success("**Historical Weather Analysis**\n\nRetrieves and aggregates historical meteorological data (temperature, rainfall, soil moisture, etc.) for any location in the Philippines.")
+    st.success("**Crop Yield Analytics**\n\nAccesses historical palay (rice) production volume, yield (MT/ha), and retail prices specifically for Region III (Central Luzon).")
 
-st.markdown("### 📍 Supported Locations (Region III Scope)")
-st.markdown("""
-While the chatbot can technically retrieve weather for any location in the Philippines, **crop analytics and yield predictions are strictly limited to Region III (Central Luzon):**
-* Aurora
-* Bataan
-* Bulacan
-* Nueva Ecija
-* Pampanga
-* Tarlac
-* Zambales
-""")
+with col2:
+    st.success("**Statistical Correlation**\n\nCalculates Pearson correlation coefficients between lagged weather variables and agricultural outcomes over specified time periods.")
+    st.success("**Machine Learning Prediction**\n\nUses Scikit-Learn Lasso regression models to predict palay yield and prices based on historical weather patterns.")
 
-st.markdown("### 🧠 How It Works (Backend Architecture)")
+st.success("**Literature Grounding (RAG)**\n\nCross-references statistical findings with a curated vector database of agronomic literature to explain *why* certain correlations exist.")
+
+st.markdown("---")
+
+st.markdown("### What WeatherTato CANNOT Handle")
+
+col3, col4 = st.columns(2)
+with col3:
+    st.error("**Future Weather Forecasts**\n\nThe system is strictly retrospective and analytical. It cannot predict if it will rain tomorrow or provide 7-day weather forecasts.")
+    st.error("**Farming & Agronomic Advice**\n\nWeatherTato is an analytical tool, not an agronomist. It will not recommend fertilizer application rates, planting dates, or pest control strategies.")
+
+with col4:
+    st.error("**Outside Region III Crop Data**\n\nWhile weather can be queried nationwide, agricultural records (yield/production) are exclusively constrained to the provinces of Central Luzon.")
+    st.error("**Non-Palay Crops**\n\nThe current database and predictive models are trained solely on Palay (rice). Corn and other crops are unsupported.")
+
+
+st.markdown("---")
+
+st.markdown("### Backend Architecture Overview")
 st.markdown("""
-Behind the scenes, WeatherTato runs on a sophisticated **LangGraph** orchestration pipeline:
-1. **Guardrails:** Intercepts prompt injections, redacts PII, and forces LLM classification to block unsupported topics.
-2. **Intent Extraction:** Uses DeepSeek-V4-Flash to dynamically extract your desired location, time period, and analytical intent.
-3. **Data Science Tools:** Instead of hallucinating numbers, the agent invokes dedicated Python tools to query SQLite databases, fetch Open-Meteo APIs, run Pearson correlations, or invoke Scikit-Learn **Lasso regression models** for yield predictions.
-4. **Literature Grounding (RAG):** When finalizing the answer, the agent cross-references its statistical calculations against a ChromaDB vector store of agronomic literature, synthesizing raw data with published agricultural research.
+WeatherTato operates on a **LangGraph** orchestration pipeline:
+1. **Guardrails:** Intercepts unsupported queries (like farming advice or future forecasts) before they reach the execution engine.
+2. **Intent Extraction:** Powered by DeepSeek-V4-Flash, the agent dynamically extracts locations, dates, and variables from natural language.
+3. **Deterministic Tools:** Instead of hallucinating numbers, the agent invokes dedicated Python scripts to query SQLite databases or Open-Meteo APIs.
+4. **Context Synthesis:** Final answers are synthesized by weaving together raw statistical data and retrieved agronomic literature.
 """)
