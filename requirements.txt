@@ -16,3 +16,4 @@ requests
 tabulate
 streamlit
 a2wsgi
+tsdisagg
