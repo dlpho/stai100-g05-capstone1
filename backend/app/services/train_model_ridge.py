@@ -29,6 +29,10 @@ WEATHER_VARS = [
 ]
 
 def get_combined_data():
+    """
+    Fetches and joins weather and market data from the database.
+    Calculates cyclical month features.
+    """
     query = """
         SELECT
             p.province_name,
@@ -71,6 +75,9 @@ def get_combined_data():
     return df
 
 def get_weather_rolling(g):
+    """
+    Builds antecedent weather features by calculating 1-month, 2-month, and 3-month rolling averages/sums.
+    """
     g = g.copy()
     for v in WEATHER_VARS:
         if v in g.columns:
@@ -81,11 +88,19 @@ def get_weather_rolling(g):
     return g
 
 def calc_metrics(y_true, y_pred):
+    """
+    Calculates MAE, RMSE, and R2 scores between true and predicted values,
+    ignoring any NaN values.
+    """
     mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     y_t, y_p = y_true[mask], y_pred[mask]
     return mean_absolute_error(y_t, y_p), np.sqrt(mean_squared_error(y_t, y_p)), r2_score(y_t, y_p)
 
 def main():
+    """
+    Main training script for the Ridge regression model.
+    Prepares data, trains models for yield, price, and production, evaluates them, and saves the models to disk.
+    """
     df_raw = get_combined_data()
     frames = []
 

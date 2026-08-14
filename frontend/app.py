@@ -22,6 +22,7 @@ title = "WeatherTato"
 # ==========================================
 
 def page_chat():
+    """Renders the main chat interface for interacting with the WeatherTato assistant."""
     st.logo(logo)
     col1, col2 = st.columns([1, 10], vertical_alignment="center")
     with col1:
@@ -101,6 +102,7 @@ def page_chat():
 
 
 def docs():
+    """Renders the documentation page detailing WeatherTato's capabilities, limitations, and architecture."""
     st.logo(logo)
     st.markdown("# WeatherTato Capabilities & Limitations")
     st.markdown("""
@@ -146,6 +148,7 @@ def docs():
 
 
 def samples():
+    """Renders the sample queries page, allowing users to test predefined prompts."""
     st.logo(logo)
     st.title("Sample Queries")
     st.markdown("Click any sample query below to instantly test it in the chat! These queries exhibit the full range of WeatherTato's analytical capabilities.")
@@ -197,6 +200,7 @@ def samples():
 
 
 def settings():
+    """Renders the settings page for managing application preferences and chat sessions."""
     st.logo(logo)
     st.title("Settings")
     

@@ -8,6 +8,9 @@ DB_PATH = os.path.abspath(
 )
 
 def _get_connection():
+    """
+    Creates and returns a sqlite3 database connection to the weathertato database.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -132,6 +135,10 @@ def resolve_location_sqlite(query_str: str) -> Tuple[Optional[LocationEntity], s
         conn.close()
 
 def _build_entity_from_match(prov_matches, muni_matches, brgy_matches, original_query) -> Tuple[Optional[LocationEntity], str]:
+    """
+    Constructs a LocationEntity object from the matching database records.
+    Returns the entity and a status string ('RESOLVED' or 'UNSUPPORTED_REGION').
+    """
     entity = None
     if prov_matches:
         r = prov_matches[0]

@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 def get_db():
+    """
+    Generator function to provide a sqlite3 database connection.
+    Yields a connection that is closed after use.
+    """
     conn = sqlite3.connect("data/weathertato.db", check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.row_factory = sqlite3.Row
@@ -91,6 +95,9 @@ def chat_endpoint(query: UserQuery) -> dict:
 
 
 def run_etl_job():
+    """
+    Executes the ETL pipeline to fetch and insert palay production and retail price data.
+    """
     logger.info("Starting ETL Job from API...")
     from services.etl.etl import insert_into_palay_production, insert_into_retail
     
@@ -121,6 +128,9 @@ def startup_event():
     import threading
     
     def run_startup_tasks():
+        """
+        Background task executed on startup to seed location data and run the initial ETL job.
+        """
         logger.info("Running startup tasks: seedlocs and ETL...")
         # 1. seedlocs
         try:

@@ -21,6 +21,9 @@ _cache: dict[str, list[dict]] = {}
 
 
 def _load_csv(path: str) -> list[dict]:
+    """
+    Loads a CSV file into a list of dictionaries, caching the result in memory.
+    """
     if path not in _cache:
         rows = []
         with open(path, newline="", encoding="utf-8") as f:

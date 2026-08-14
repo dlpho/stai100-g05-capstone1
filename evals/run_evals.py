@@ -11,33 +11,39 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 
 def run_unit():
+    """Executes the Layer 1 unit evaluations (guardrails, heuristics, routing)."""
     from unit_evals import main
     main()
 
 
 def run_rag():
+    """Executes the Layer 2 RAG evaluations (retrieval precision/recall/MRR)."""
     from rag_evals import main
     main()
 
 
 def run_llm(which):
+    """Executes the Layer 3 LLM-dependent evaluations (topic classifier, LLM-as-judge)."""
     from llm_evals import main
     main(which)
 
 
 def run_trajectory():
+    """Executes the agent trajectory evaluations using pytest."""
     import pytest
     print("Running Trajectory Evals...")
     pytest.main(["-v", os.path.join(os.path.dirname(__file__), "test_trajectory.py")])
 
 
 def run_e2e():
+    """Executes the end-to-end task success evaluations using pytest."""
     import pytest
     print("Running E2E Evals...")
     pytest.main(["-v", os.path.join(os.path.dirname(__file__), "test_e2e.py")])
 
 
 def summarize():
+    """Compiles individual evaluation metrics JSON files into a single summary report."""
     here = os.path.dirname(__file__)
     summary = {}
     files = (

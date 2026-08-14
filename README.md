@@ -147,6 +147,8 @@ graph TD
 * **Large Language Model**: DeepSeek Chat (`deepseek-v4-flash`) accessed via LangChain `ChatOpenAI` wrapper pointed at `https://api.deepseek.com`.
 * **Geospatial Resolution**: Local coordinates database matching Philippine provinces, cities/municipalities, and barangay centroids processed offline from PSA/NAMRIA shapefiles using GeoPandas.
 * **Weather Service**: Open-Meteo API (Forecast & Archive) utilizing `requests-cache` and `retry-requests`.
+* **Machine Learning**: Scikit-Learn pipelines utilizing Ridge and Lasso regression to predict agricultural outcomes.
+* **RAG System**: ChromaDB vector store paired with Qwen3-Embedding-0.6B to provide literature-grounded answers.
 * **Observability (LLMOps)**: MLflow (autologs agent runs, node execution latency, token counts, and exceptions).
 
 ### C. Component Breakdown
@@ -158,6 +160,8 @@ graph TD
 * **`backend/app/services/location_search.py`**: Performs local geocoding checks against provincial, municipal, and barangay coordinate lists. Falls back to a flat keyword search across all municipalities if no province is matched hierarchically.
 * **`backend/app/services/geopandas_handler.py`**: Preprocessing script that processes geographic shapefiles, extracts centroid geometry, and exports coordinates to database CSVs.
 * **`backend/app/services/meteo_service.py`**: Calls weather services, performs exact Pandas computations (sums, peaks, averages), and outputs tabular Markdown.
+* **`backend/app/services/rag_service.py`**: Initializes and manages the local ChromaDB vector store for agricultural literature context retrieval.
+* **`backend/app/services/train_model.py` / `train_model_ridge.py`**: Scripts to train and serialize Lasso and Ridge regression models for predictive crop analytics.
 * **`backend/app/models/schemas.py`**: Contains Pydantic models for incoming query validations (`UserQuery` with optional `history` list) and the conversational agent state (`AgentState` with `messages` list).
 
 ### D. Data Model & Flow
@@ -186,22 +190,24 @@ The system maintains and updates an interactive conversation state across all no
 
 ## 🧪 Automated Evaluation & Testing
 
-WeatherTato implements an automated test suite that runs a **Golden Dataset** ([eval_dataset.json](file:///c:/Users/Liana%20Ho/Documents/school/stai100-g05-capstone1/eval_dataset.json)) of 16 test cases covering 4 key testing disciplines to guarantee chatbot correctness and verify corner cases.
+WeatherTato implements an automated test suite across 3 conceptual layers to guarantee chatbot correctness and verify corner cases. The evaluations are located in the `evals/` directory.
+
+### Evaluation Layers:
+1. **Layer 1 (Unit)**: Deterministic heuristic checks testing Guardrails (PII redaction, Prompt Injection), Location Resolution, and SQL/Tool constraints.
+2. **Layer 2 (RAG)**: Assesses knowledge retrieval using Precision@2, Recall@2, and Mean Reciprocal Rank (MRR) against a curated literature collection.
+3. **Layer 3 (LLM-Dependent)**: Topics classification guardrails, absolute grading (LLM-as-judge), and pairwise grading with positional bias checks.
 
 ### Running the Test Suite:
-1. Ensure your virtual environment is activated and the active `.env` file has `ENABLE_MLFLOW=true`.
-2. Run the evaluation script in your terminal:
+1. Ensure your virtual environment is activated and the active `.env` file has `DEEPSEEK_API_KEY` configured.
+2. Run the evaluation script in your terminal to evaluate all layers:
    ```bash
-   python evaluate.py
+   python evals/run_evals.py --layer all
    ```
-3. The script will execute each test query against the compiled LangGraph agent, calculate metrics, and output a terminal summary report.
-
-### Inspecting Results:
-* **Local CSV Report**: Stored in [evaluation_report.csv](file:///c:/Users/Liana%20Ho/Documents/school/stai100-g05-capstone1/mlflow_data/evaluation_report.csv) containing columns for case ID, query, expected intent, actual intent, correctness flag, and query latency (seconds).
-* **MLflow UI Traces**: Start the MLflow server (`mlflow ui --backend-store-uri sqlite:///mlflow_data/mlflow_traces.db`) and open [http://localhost:5000](http://localhost:5000). Click into the `chatbot_automated_evaluation` run to see:
-  - **Trace Trees**: Visual node-by-node execution trace blocks showing outputs and latency for each node inside LangGraph.
-  - **Metric Charts**: Latency distributions and intent matching accuracy metrics.
-  - **Summary Tables**: A formatted tabular evaluation list stored directly under the run artifacts.
+   Or target a specific layer (e.g., `unit`, `rag`, `llm`):
+   ```bash
+   python evals/run_evals.py --layer unit
+   ```
+3. Metric reports (e.g., `metrics_unit.json`, `metrics_rag.json`) will be generated inside the `evals/` directory.
 
 ---
 

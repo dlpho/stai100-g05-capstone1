@@ -19,6 +19,9 @@ _collection = None
 _embedder = None
 
 def get_embedder():
+    """
+    Lazily initializes and returns the SentenceTransformer embedding model.
+    """
     global _embedder
     if _embedder is None:
         logger.info(f"Loading embedding model: {EMBEDDING_MODEL_NAME}")
@@ -27,6 +30,10 @@ def get_embedder():
     return _embedder
 
 def get_chroma_collection():
+    """
+    Lazily initializes the ChromaDB client and retrieves or creates the RRL collection.
+    Ingests the knowledge base if the collection is newly created.
+    """
     global _chroma_client, _collection
     if _chroma_client is None:
         _chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)

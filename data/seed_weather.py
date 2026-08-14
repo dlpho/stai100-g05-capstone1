@@ -19,6 +19,10 @@ START_DATE = "2012-01-01"
 END_DATE = "2026-07-31"
 
 def seed_fact_weather_monthly():
+    """
+    Fetches historical monthly weather data for all provinces from the Open-Meteo API
+    and populates the fact_weather_monthly table in the database.
+    """
     if not os.path.exists(DB_PATH):
         raise FileNotFoundError(f"Database file not found at {DB_PATH}")
 

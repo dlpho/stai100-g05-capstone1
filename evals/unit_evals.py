@@ -17,9 +17,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "backend", "app"))
 
-from core.guardrails import remove_pii, is_prompt_injection, is_out_of_scope
-from services.location_resolve import resolve_location_sqlite
-from services.correlation_service import WEATHER_VAR_MAP, OUTCOME_COLUMNS
+from backend.app.core.guardrails import remove_pii, is_prompt_injection, is_out_of_scope
+from backend.app.services.location_resolve import resolve_location_sqlite
+from backend.app.services.correlation_service import WEATHER_VAR_MAP, OUTCOME_COLUMNS
 
 DB = os.path.join(ROOT, "data", "weathertato.db")
 GOLDEN = os.path.join(os.path.dirname(__file__), "golden_data.json")
@@ -29,6 +29,7 @@ GOLDEN = os.path.join(os.path.dirname(__file__), "golden_data.json")
 # Metric helpers
 # ---------------------------------------------------------------------------
 def confusion(tp, fp, fn, tn):
+    """Calculates precision, recall, f1, and accuracy from confusion matrix values."""
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
@@ -38,6 +39,7 @@ def confusion(tp, fp, fn, tn):
 
 
 def binary_metrics(preds, labels):
+    """Computes a confusion matrix and metrics from lists of binary predictions and labels."""
     tp = sum(1 for p, l in zip(preds, labels) if p and l)
     fp = sum(1 for p, l in zip(preds, labels) if p and not l)
     fn = sum(1 for p, l in zip(preds, labels) if not p and l)
@@ -49,6 +51,7 @@ def binary_metrics(preds, labels):
 # 1. Guardrails
 # ---------------------------------------------------------------------------
 def eval_guardrails(cases):
+    """Evaluates prompt injection, out-of-scope, and PII redaction guardrails against test cases."""
     inj_preds, inj_labels = [], []
     oos_preds, oos_labels = [], []
     pii_preds, pii_labels = [], []
@@ -80,6 +83,7 @@ def eval_guardrails(cases):
 # 2. Location resolution
 # ---------------------------------------------------------------------------
 def eval_location(cases):
+    """Evaluates the location resolution logic against test cases."""
     correct_province = 0
     correct_status = 0
     resolved = 0
@@ -113,6 +117,7 @@ def eval_location(cases):
 # 3. SQL / tool integrity
 # ---------------------------------------------------------------------------
 def eval_sql_and_tools():
+    """Validates database integrity, mappings, and prediction service basic functionality."""
     checks = []
 
     def check(name, ok, detail=""):
@@ -153,7 +158,7 @@ def eval_sql_and_tools():
     pred_detail = "n/a"
     pred_ok = False
     try:
-        from services.predict_service import predict_yield, predict_price
+        from backend.app.services.predict_service import predict_yield, predict_price
         y = predict_yield("Pampanga", 2024, 6)
         p = predict_price("Pampanga", 2024, 6)
         pred_ok = (isinstance(y, float) and 0 < y < 15) and (isinstance(p, float) and 0 < p < 100)
@@ -166,6 +171,7 @@ def eval_sql_and_tools():
 
 
 def main():
+    """Main entry point for unit evaluations. Runs guardrails, location, and tool checks."""
     with open(GOLDEN, "r", encoding="utf-8") as f:
         golden = json.load(f)
 

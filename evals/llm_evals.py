@@ -31,6 +31,9 @@ OUT_DIR = os.path.dirname(__file__)
 
 
 def get_llm():
+    """
+    Initializes and returns a ChatOpenAI instance using DeepSeek settings.
+    """
     return ChatOpenAI(model=DEEPSEEK_MODEL, api_key=DEEPSEEK_API_KEY,
                       base_url=DEEPSEEK_BASE_URL, temperature=0)
 
@@ -52,11 +55,18 @@ TOPIC_CASES = [
 
 
 def _parse_json(text):
+    """
+    Attempts to extract and parse a JSON object from a given text string.
+    """
     m = re.search(r"\{.*\}", text, re.DOTALL)
     return json.loads(m.group()) if m else None
 
 
 def eval_topic_classifier(llm):
+    """
+    Evaluates the topic classifier guardrail against predefined test cases.
+    Returns accuracy metrics and case-by-case results.
+    """
     correct_blocked = 0
     correct_topic = 0
     per_case = []
@@ -116,12 +126,19 @@ JUDGE_ABSOLUTE_CASES = [
 
 
 def _judge_absolute(llm, case):
+    """
+    Runs absolute grading of an answer using the LLM-as-judge pattern.
+    """
     user = ABSOLUTE_JUDGE_USER.format(query=case["query"], context=case["context"], answer=case["answer"])
     resp = llm.invoke([("system", ABSOLUTE_JUDGE_SYSTEM), ("human", user)])
     return _parse_json(resp.content) or {"error": resp.content[:200]}
 
 
 def _judge_pairwise(llm, case, swap=False):
+    """
+    Runs pairwise comparison between two answers to determine the better one.
+    The swap parameter reverses the order of the answers to test for positional bias.
+    """
     a, b = case["answer_a"], case["answer_b"]
     if swap:
         a, b = b, a
@@ -132,6 +149,9 @@ def _judge_pairwise(llm, case, swap=False):
 
 
 def eval_judge(llm):
+    """
+    Evaluates the LLM-as-judge prompt (both absolute and pairwise, including positional bias checks).
+    """
     t0 = time.time()
     absolute = []
     for c in JUDGE_ABSOLUTE_CASES:
@@ -179,6 +199,9 @@ def eval_trajectory():
 
 
 def main(which="topic"):
+    """
+    Main entry point for running LLM-dependent evaluations.
+    """
     llm = get_llm()
     if which == "topic":
         results = {"topic_classifier": eval_topic_classifier(llm)}

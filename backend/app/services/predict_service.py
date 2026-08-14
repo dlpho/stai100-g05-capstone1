@@ -36,6 +36,9 @@ def get_latest_model(model_type: str):
 
 
 def _next_month(year: int, month: int):
+    """
+    Calculates the next month and year given a current month and year.
+    """
     month += 1
     if month > 12:
         month = 1
@@ -92,6 +95,9 @@ def _build_features(province_name: str, target_year: int, target_month: int) -> 
 
 
 def _predict(model_type: str, province_name: str, target_year: int, target_month: int) -> float:
+    """
+    Core prediction function that builds features and runs the specified model type.
+    """
     row = _build_features(province_name, target_year, target_month)
     model = get_latest_model(model_type)
     return float(model.predict(row[model.feature_names_in_])[0])

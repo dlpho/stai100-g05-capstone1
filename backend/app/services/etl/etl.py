@@ -15,6 +15,10 @@ DB_PATH = os.path.abspath(
 
 
 def insert_into_palay_production(cur: sql.Cursor):
+    """
+    Fetches palay production volume and harvested area from the PSA OpenSTAT API,
+    disaggregates quarterly data into monthly, and inserts it into the database.
+    """
     ytd = date.today().year
     vol_url = "https://openstat.psa.gov.ph:443/PXWeb/api/v1/en/DB/2E/CS/0012E4EVCP0.px"
     area_url = "https://openstat.psa.gov.ph:443/PXWeb/api/v1/en/DB/2E/CS/0022E4EAHC0.px"
@@ -133,6 +137,9 @@ def insert_into_palay_production(cur: sql.Cursor):
     )
 
 def _fetch_retail_prices(url: str, query: dict) -> pd.DataFrame:
+    """
+    Helper function to query the PSA OpenSTAT API for retail prices and format the result into a DataFrame.
+    """
     res = requests.post(url, json=query)
     df = pd.read_csv(io.StringIO(res.text)).T
     df.columns = [s.strip(".") for s in df.iloc[0]]
@@ -146,6 +153,9 @@ def _fetch_retail_prices(url: str, query: dict) -> pd.DataFrame:
 
 
 def insert_into_retail(cur: sql.Cursor):
+    """
+    Fetches historical and new retail prices from the PSA OpenSTAT API and inserts them into the database.
+    """
     newapi = "https://openstat.psa.gov.ph:443/PXWeb/api/v1/en/DB/2M/2018NEW/0042M4ARN01.px"
     oldapi = "https://openstat.psa.gov.ph:443/PXWeb/api/v1/en/DB/2M/NRP/0042M4ARN01.px"
     newquery = {

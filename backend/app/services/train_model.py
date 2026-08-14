@@ -29,6 +29,10 @@ WEATHER_VARS = [
 SEASON_WET_MONTHS = {6, 7, 8, 9, 10, 11}
 
 def get_combined_data():
+    """
+    Fetches and joins weather and market data from the database.
+    Calculates cyclical month features.
+    """
     query = """
         SELECT
             p.province_name,
@@ -97,11 +101,18 @@ def get_weather_rolling(g):
     return g
 
 def calc_metrics(y_true, y_pred):
+    """
+    Calculates MAE, RMSE, and R2 scores between true and predicted values,
+    ignoring any NaN values.
+    """
     mask = ~np.isnan(y_true) & ~np.isnan(y_pred)
     y_t, y_p = y_true[mask], y_pred[mask]
     return mean_absolute_error(y_t, y_p), np.sqrt(mean_squared_error(y_t, y_p)), r2_score(y_t, y_p)
 
 def print_top_features(model, feature_names, title="Selected Features"):
+    """
+    Prints the most important features (non-zero coefficients) from a trained Lasso model.
+    """
     scaler = model.named_steps["scaler"]
     lasso = model.named_steps["model"]
 
@@ -117,6 +128,10 @@ def print_top_features(model, feature_names, title="Selected Features"):
             print(f"  {feat:<35}: {val:+.4f}")
 
 def main():
+    """
+    Main training script. Prepares data, trains Lasso models for yield, price, and production,
+    evaluates them against baselines, and saves the models to disk.
+    """
     df_raw = get_combined_data()
     frames = []
 

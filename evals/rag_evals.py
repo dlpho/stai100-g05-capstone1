@@ -18,6 +18,9 @@ GOLDEN = os.path.join(os.path.dirname(__file__), "golden_data.json")
 
 
 def retrieve(query, top_k=2):
+    """
+    Retrieves the top-k most relevant sections from the ChromaDB collection based on the query.
+    """
     from backend.app.services.rag_service import get_chroma_collection, get_embedder
     collection = get_chroma_collection()
     embedder = get_embedder()
@@ -29,6 +32,9 @@ def retrieve(query, top_k=2):
 
 
 def main():
+    """
+    Main evaluation script for RAG. Computes Precision@K, Recall@K, and Mean Reciprocal Rank (MRR).
+    """
     with open(GOLDEN, "r", encoding="utf-8") as f:
         golden = json.load(f)["rag"]
 
