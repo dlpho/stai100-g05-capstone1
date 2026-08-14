@@ -46,7 +46,7 @@ def node_guardrails(state: DummyAgentState) -> dict:
     print(f"Fallback triggered: {result.get('fallback')}")
     
     if result.get("fallback"):
-        return {"error": "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot provide advice, weather forecasts, or answer off-topic queries.", "user_query": clean_query}
+        return {"error": "I can only answer questions related to historical weather conditions and palay crop yield and price, and their relationships. I cannot provide advice, weather forecasts, or answer off-topic queries.", "user_query": clean_query}
         
     return {"user_query": clean_query}
 

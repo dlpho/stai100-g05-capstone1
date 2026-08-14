@@ -56,13 +56,13 @@ def main():
     run_test("2. Crop Query", "How much palay was produced in Bulacan in 2023?")
     
     # 3. Correlation query
-    run_test("3. Correlation Query", "Is there a correlation between temperature and corn yield in Nueva Ecija?")
+    run_test("3. Correlation Query", "Is there a correlation between temperature  yield in Nueva Ecija?")
     
     # 4. Prediction query (default variables)
     run_test("4. Prediction Query (Default vars)", "Predict the palay yield for Pampanga in Q3 2025.")
     
     # 5. Prediction query (explicit variables)
-    run_test("5. Prediction Query (Explicit vars)", "Predict the corn yield in Bulacan using rainfall and humidity for next year.")
+    run_test("5. Prediction Query (Explicit vars)", "Predict the palay yield in Bulacan using rainfall and humidity for next year.")
     
     # 6. Multi-step query
     run_test("6. Genuine Multi-step ReAct", "First get the weather for Pampanga last month, and then based on that, predict the palay yield for Pampanga.")
@@ -71,7 +71,7 @@ def main():
     thread_id = run_test("7. Follow-up Part 1", "What was the palay production in Nueva Ecija in 2023?")
     print("\n--- Sending follow-up to same thread ---")
     config = {"configurable": {"thread_id": thread_id}}
-    state = {"user_query": "What about corn?"}
+    state = {"user_query": "What about price?"}
     for event in compiled_graph.stream(state, config):
         for key, value in event.items():
             print(f"\n--- Node: {key} ---")
