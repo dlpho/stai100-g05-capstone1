@@ -12,6 +12,95 @@ retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
 openmeteo = openmeteo_requests.Client(session=retry_session)
 
 
+# ---------------------------------------------------------------------------
+# Monthly aggregation config (WeatherTato monthly weather feature set)
+# ---------------------------------------------------------------------------
+# How each daily Open-Meteo variable collapses to a monthly value.
+MONTHLY_AGG = {
+    "precipitation_sum": "sum",               # monthly total rainfall (mm)
+    "temperature_2m_mean": "mean",            # avg of daily mean temp (C)
+    "temperature_2m_max": "mean",             # avg of daily max temp (C)
+    "temperature_2m_min": "mean",             # avg of daily min temp (C)
+    "surface_pressure_mean": "mean",          # avg surface pressure (hPa)
+    "soil_moisture_0_to_100cm_mean": "mean",  # avg soil moisture
+}
+
+# Dorado-study thresholds for the derived extreme-day counts.
+EXTREME_RAIN_THRESHOLD_MM = 54.0   # a day is "extreme rainfall" if precip >= this
+EXTREME_HEAT_THRESHOLD_C = 34.0    # a day is "extreme heat" if daily max temp >= this
+
+DEFAULT_WEATHER_VARS = list(MONTHLY_AGG.keys())
+
+
+def fetch_monthly_weather(
+    lat: float,
+    lon: float,
+    start_date: str,
+    end_date: str,
+    daily_vars: list | None = None,
+) -> pd.DataFrame:
+    """Fetch daily Open-Meteo Archive data and collapse it to monthly rows.
+
+    Each daily variable is aggregated per MONTHLY_AGG (precipitation summed,
+    all other variables averaged). Two derived counts are also
+    computed from the daily series (Dorado study):
+      - extreme_rain_days: days where precipitation_sum >= 54 mm
+      - extreme_heat_days: days where temperature_2m_max >= 34 C
+
+    Returns a DataFrame with columns:
+        year, month, <each requested variable>, extreme_rain_days, extreme_heat_days
+    """
+    daily_vars = list(daily_vars) if daily_vars else DEFAULT_WEATHER_VARS
+
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": daily_vars,
+        "timezone": "Asia/Manila",
+    }
+
+    responses = openmeteo.weather_api(url, params=params, timeout=120)
+    response = responses[0]
+    daily = response.Daily()
+
+    daily_data = {
+        "date": pd.date_range(
+            start=pd.to_datetime(daily.Time(), unit="s", utc=True),
+            end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
+            freq=pd.Timedelta(seconds=daily.Interval()),
+            inclusive="left",
+        ).tz_convert("Asia/Manila")
+    }
+    for i, var in enumerate(daily_vars):
+        daily_data[var] = daily.Variables(i).ValuesAsNumpy()
+
+    df = pd.DataFrame(daily_data).set_index("date")
+
+    # Derived extreme-day flags (0/1 per day), computed before grouping.
+    if "precipitation_sum" in df:
+        df["extreme_rain_days"] = (df["precipitation_sum"] >= EXTREME_RAIN_THRESHOLD_MM).astype(int)
+    if "temperature_2m_max" in df:
+        df["extreme_heat_days"] = (df["temperature_2m_max"] >= EXTREME_HEAT_THRESHOLD_C).astype(int)
+
+    df["year"] = df.index.year
+    df["month"] = df.index.month
+
+    agg_spec = {var: MONTHLY_AGG.get(var, "mean") for var in daily_vars}
+    if "extreme_rain_days" in df:
+        agg_spec["extreme_rain_days"] = "sum"
+    if "extreme_heat_days" in df:
+        agg_spec["extreme_heat_days"] = "sum"
+
+    monthly = df.groupby(["year", "month"]).agg(agg_spec).reset_index()
+
+    var_cols = [v for v in daily_vars if v in monthly.columns]
+    derived_cols = [c for c in ("extreme_rain_days", "extreme_heat_days") if c in monthly.columns]
+    return monthly[["year", "month"] + var_cols + derived_cols]
+
+
 def get_weather_analytics(
     lat: float,
     lon: float,
