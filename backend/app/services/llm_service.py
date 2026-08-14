@@ -94,9 +94,13 @@ def node_task_extraction(state: AgentState) -> dict:
 
     messages = [SystemMessage(content=SLOT_SYSTEM_PROMPT)]
     if state.messages:
-        for msg in state.messages[-4:]:
-            if isinstance(msg, HumanMessage) or isinstance(msg, AIMessage):
-                messages.append(msg)
+        conversational_history = []
+        for msg in state.messages:
+            if isinstance(msg, HumanMessage):
+                conversational_history.append(msg)
+            elif isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", None):
+                conversational_history.append(AIMessage(content=msg.content))
+        messages.extend(conversational_history[-4:])
     messages.append(HumanMessage(content=state.user_query))
 
     try:
