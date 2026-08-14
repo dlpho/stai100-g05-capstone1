@@ -1,35 +1,74 @@
-import csv, sqlite3
+import csv
+import sqlite3
 
 def seed_muni(cur: sqlite3.Cursor, data: list[dict]):
+  cur.execute("SELECT LOWER(province_name), province_id FROM dim_province")
+  province_map = {row[0]: row[1] for row in cur.fetchall()}
+
+  munis_to_insert = []
   for r in data:
-    p, reg, c, lat, lon = r["province"].strip(), r["region"].strip(), r["municipality_city"].strip(), float(r["latitude"]), float(r["longitude"])
-    cur.execute("INSERT INTO dim_province (province_name, region_name, latitude, longitude) VALUES (?, ?, ?, ?) ON CONFLICT(province_name) DO UPDATE SET region_name = excluded.region_name", (p, reg, lat, lon))
-    cur.execute("SELECT province_id FROM dim_province WHERE province_name = ?", (p,))
-    pid = cur.fetchone()[0]
-    cur.execute("INSERT INTO dim_city_municipality (city_municipality_name, province_id, latitude, longitude) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dim_city_municipality WHERE city_municipality_name = ? AND province_id = ?)", (c, pid, lat, lon, c, pid))
+    c = r["municipality_city"].strip()
+    p_lower = r["province"].strip().lower()
+    lat = float(r["latitude"])
+    lon = float(r["longitude"])
+
+    pid = province_map.get(p_lower)
+    if pid:
+        munis_to_insert.append((c, pid, lat, lon))
+
+  cur.executemany(
+    """INSERT OR IGNORE INTO dim_city_municipality (city_municipality_name, province_id, latitude, longitude)
+      VALUES (?, ?, ?, ?)""",
+    munis_to_insert
+  )
+
 
 def seed_brgy(cur: sqlite3.Cursor, data: list[dict]):
+  cur.execute("""
+    SELECT LOWER(c.city_municipality_name), LOWER(p.province_name), c.city_municipality_id
+    FROM dim_city_municipality c
+    JOIN dim_province p ON c.province_id = p.province_id
+  """)
+  city_map = {(row[0], row[1]): row[2] for row in cur.fetchall()}
+
+  rows_to_insert = []
   for r in data:
-    b, c, p, lat, lon = r["barangay"].strip(), r["municipality_city"].strip(), r["province"].strip(), float(r["latitude"]), float(r["longitude"])
-    cur.execute("SELECT c.city_municipality_id FROM dim_city_municipality c JOIN dim_province p ON c.province_id = p.province_id WHERE LOWER(c.city_municipality_name) = LOWER(?) AND LOWER(p.province_name) = LOWER(?)", (c, p))
-    res = cur.fetchone()
-    if not res: continue
-    cid = res[0]
-    cur.execute("INSERT INTO dim_barangay (barangay_name, city_municipality_id, latitude, longitude) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dim_barangay WHERE barangay_name = ? AND city_municipality_id = ?)", (b, cid, lat, lon, b, cid))
+    b = r["barangay"].strip()
+    c = r["municipality_city"].strip().lower()
+    p = r["province"].strip().lower()
+    lat = float(r["latitude"])
+    lon = float(r["longitude"])
+
+    cid = city_map.get((c, p))
+    if cid:
+      rows_to_insert.append((b, cid, lat, lon))
+
+  cur.executemany(
+    """INSERT OR IGNORE INTO dim_barangay (barangay_name, city_municipality_id, latitude, longitude)
+      VALUES (?, ?, ?, ?)""",
+    rows_to_insert
+  )
+
 
 if __name__ == "__main__":
-  conn = sqlite3.connect("./data/weathertato.db")
+  conn = sqlite3.connect("./data/weathertato.db", timeout=30.0)
+  conn.execute("PRAGMA journal_mode = WAL;")
   cur = conn.cursor()
   cur.execute("PRAGMA foreign_keys = ON;")
 
+  print("Reading CSV files...")
   with open("./data/philippines_municities_coordinates_2023.csv", "r", encoding="utf-8") as f:
     mdata = list(csv.DictReader(f))
 
   with open("./data/philippines_barangay_coordinates_2023.csv", "r", encoding="utf-8") as f:
     bdata = list(csv.DictReader(f))
 
-  seed_muni(cur, mdata)
-  seed_brgy(cur, bdata)
+  with conn:
+    print(f"Seeding {len(mdata)} Municipalities/Cities...")
+    seed_muni(cur, mdata)
 
-  conn.commit()
+    print(f"Seeding {len(bdata)} Barangays...")
+    seed_brgy(cur, bdata)
+
   conn.close()
+  print("Database seeding completed successfully!")
