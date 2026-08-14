@@ -2,10 +2,10 @@
 WeatherTato — Input Safety & Guardrails Utilities
 
 This module provides the core safety mechanisms for the chatbot. It is responsible for:
-1. PII Redaction: Sanitizing user inputs to protect privacy.
-2. Prompt Injection Detection: Preventing malicious overrides of system instructions.
-3. Scope Restriction (Regex): Quickly filtering out known unauthorized topics (e.g., farming advice).
-4. Topic Classification (LLM): Using an LLM to dynamically determine if a query is within answerable scope.
+1. PII Redaction (Regex) - Sanitizing user inputs of any personal information.
+2. Prompt Injection Detection (Keywords) - Preventing malicious queries attempting to bypass the system instructions.
+3. Scope Restriction (Keywords) - Filtering out-of-scope phrases.
+4. Topic Classification (LLM) - Determine if a query is within answerable scope.
 """
 import re
 import json
@@ -230,6 +230,7 @@ def is_out_of_scope(text: str) -> bool:
 
 # ── 1. Define Allowed Topics ──────────────────────────────────────────────────
 TOPICS = {
+    # Allowed (allowed=true)
     "WEATHER": "Questions about historical or current weather conditions and weather variables.",
     "CROP": "Questions about palay (rice) or corn yield or price.",
     "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay or corn yield or price.",
@@ -241,7 +242,6 @@ TOPICS = {
 }
 
 # ── 2. System Prompt ──────────────────────────────────────────────────────────
-
 TOPIC_SYSTEM_PROMPT = (
     "You are a topic classifier for a weather and agricultural information chatbot.\n\n"
     "Classify the user's message into EXACTLY ONE of these topics:\n"
@@ -285,7 +285,7 @@ TOPIC_FEW_SHOT = [
 # ── 4. Classifier ─────────────────────────────────────────────────────────────
 def is_on_topic(user_message: str, llm, history: list = None) -> dict:
     """
-    Evaluates whether the user's message is within the supported topics using an LLM.
+    Evaluates whether the user's message is within the supported topics using the LLM.
     
     This acts as a dynamic guardrail, utilizing a few-shot prompted LLM to classify 
     the intent of the user. It enforces strict fallback rules to prevent the agent 
@@ -312,11 +312,16 @@ def is_on_topic(user_message: str, llm, history: list = None) -> dict:
         else:
             messages.append(AIMessage(content=ex["content"]))
             
-    # Incorporate recent conversation history (last 4 messages) for context
+    # Incorporate recent conversational history (last 4 valid messages) for context
     if history:
-        for msg in history[-4:]:
-            if isinstance(msg, HumanMessage) or isinstance(msg, AIMessage):
-                messages.append(msg)
+        conversational_history = []
+        for msg in history:
+            if isinstance(msg, HumanMessage):
+                conversational_history.append(msg)
+            elif isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", None):
+                conversational_history.append(AIMessage(content=msg.content))
+        
+        messages.extend(conversational_history[-4:])
                 
     # Ensure the current user query is at the end of the message list
     if not history or not (isinstance(history[-1], HumanMessage) and history[-1].content == user_message):
@@ -339,7 +344,7 @@ def is_on_topic(user_message: str, llm, history: list = None) -> dict:
         confidence = result.get("confidence", 0.0)
         
         # Normalize unknown or unsupported topics
-        if topic not in TOPICS and topic != "AGRICULTURAL_ADVICE":
+        if topic not in TOPICS and topic != "ADVICE":
             topic = "UNKNOWN"
             
         # Apply strict fallback rules according to the condition table
@@ -348,7 +353,7 @@ def is_on_topic(user_message: str, llm, history: list = None) -> dict:
             return {"topic": "UNKNOWN", "allowed": False, "confidence": confidence, "fallback": True}
             
         # Fallback if the topic is explicitly restricted (e.g., farming advice or completely off-topic)
-        if topic in ["ADVICE", "AGRICULTURAL_ADVICE", "OFF_TOPIC", "UNKNOWN"]:
+        if topic in ["ADVICE", "OFF_TOPIC", "UNKNOWN"]:
             return {"topic": topic, "allowed": False, "confidence": confidence, "fallback": True}
             
         # Fallback if the LLM flagged it as not allowed
