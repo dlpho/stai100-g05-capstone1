@@ -232,13 +232,13 @@ def is_out_of_scope(text: str) -> bool:
 TOPICS = {
     # Allowed (allowed=true)
     "WEATHER": "Questions about historical or current weather conditions and weather variables.",
-    "CROP": "Questions about palay (rice) or corn yield or price.",
-    "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay or corn yield or price.",
+    "CROP": "Questions about palay (rice) yield or price.",
+    "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay yield or price.",
     "GENERAL": "Questions about the chatbot's capabilities, supported information, available analyses, or how to use the chatbot.",
     # Out of scope (allowed=false)
     "FORECAST": "Requests for weather forecasts or weather-related predictions about future weather conditions.",
     "ADVICE": "Requests for farming recommendations or actions, such as planting, irrigation, fertilizer, pesticides, or harvesting.",
-    "OFF_TOPIC": "Questions unrelated to weather, palay, corn, yield, price, or their relationship - unrelated topics like sports, food, entertainment, math, personal questions, etc."
+    "OFF_TOPIC": "Questions unrelated to weather, palay, yield, price, or their relationship - unrelated topics like sports, food, entertainment, math, personal questions, etc."
 }
 
 # ── 2. System Prompt ──────────────────────────────────────────────────────────

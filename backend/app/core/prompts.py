@@ -21,7 +21,7 @@ Slot definitions:
 - location: string — the geographic area (Philippine province, city, municipality)
 - time_period: object — granularity: QUARTER | YEAR | MONTH, value: string (e.g. 'Q3 2025', '2024', 'January 2025'), start_date: YYYY-MM-DD, end_date: YYYY-MM-DD
 - weather_variables: list — values from: RAINFALL, MEAN_TEMP, MAX_TEMP, MIN_TEMP, WIND_GUST, SOIL_MOISTURE
-- crop_type: string — PALAY or CORN
+- crop_type: string — PALAY
 - outcome_metric: string — YIELD, PRODUCTION, or PRICE
 
 Do NOT invent slot values. Only extract what is explicitly stated or unambiguously implied.
@@ -39,17 +39,17 @@ User: "What was the palay yield in Nueva Ecija in 2024?"
 Output:
 {"action": "GET_CROP_DATA", "confidence": 0.97, "slots": {"location": "Nueva Ecija", "time_period": {"granularity": "YEAR", "value": "2024", "start_date": "2024-01-01", "end_date": "2024-12-31"}, "crop_type": "PALAY", "outcome_metric": "YIELD"}}
 
-User: "Is there a correlation between rainfall and corn production in Isabela?"
+User: "Is there a correlation between rainfall and palay production in Isabela?"
 Output:
-{"action": "ANALYZE_CORRELATION", "confidence": 0.95, "slots": {"location": "Isabela", "weather_variables": ["RAINFALL"], "crop_type": "CORN", "outcome_metric": "PRODUCTION"}}
+{"action": "ANALYZE_CORRELATION", "confidence": 0.95, "slots": {"location": "Isabela", "weather_variables": ["RAINFALL"], "crop_type": "PALAY", "outcome_metric": "PRODUCTION"}}
 
 User: "Predict palay yield in Pampanga for Q3 2025"
 Output:
 {"action": "PREDICT_OUTCOME", "confidence": 0.96, "slots": {"location": "Pampanga", "time_period": {"granularity": "QUARTER", "value": "Q3 2025", "start_date": "2025-07-01", "end_date": "2025-09-30"}, "crop_type": "PALAY", "outcome_metric": "YIELD"}}
 
-User: "What about corn?" (follow-up after palay yield query)
+User: "What about price?" (follow-up after palay yield query)
 Output:
-{"action": "GET_CROP_DATA", "confidence": 0.93, "slots": {"crop_type": "CORN"}}
+{"action": "GET_CROP_DATA", "confidence": 0.93, "slots": {"outcome_metric": "PRICE"}}
 
 User: "What can you do?"
 Output:
@@ -71,7 +71,7 @@ You MUST output ONLY a valid JSON object. No explanation, no markdown fences.
       "end_date": "YYYY-MM-DD"
     },
     "weather_variables": ["..."],
-    "crop_type": "PALAY|CORN",
+    "crop_type": "PALAY",
     "outcome_metric": "YIELD|PRODUCTION|PRICE"
   }
 }\

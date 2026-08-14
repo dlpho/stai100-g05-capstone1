@@ -63,7 +63,7 @@ def node_guardrails(state: AgentState) -> dict:
         elif topic == "ADVICE":
             msg = "I can provide data analysis, but I cannot give direct farming advice or crop recommendations."
         else:
-            msg = "I can only answer questions related to historical weather conditions and palay/corn crop yield and price, and their relationships. I cannot answer off-topic queries."
+            msg = "I can only answer questions related to historical weather conditions and palay crop yield and price, and their relationships. I cannot answer off-topic queries."
         return {"error": msg, "user_query": clean_query, "topic": topic, "tool_iteration_count": 0}
     return {"user_query": clean_query, "topic": topic, "tool_iteration_count": 0}
 
@@ -279,7 +279,7 @@ def get_crop_data_tool(location: str, crop_type: str, time_period_value: str) ->
     """Gets historical crop production data for a location.
     Args:
         location: The name of the city, municipality, or province.
-        crop_type: The type of crop (e.g. PALAY or CORN).
+        crop_type: The type of crop (e.g. PALAY).
         time_period_value: The time period (e.g. 2024, Q3 2025).
     """
     return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {location} ({time_period_value}) | 1500 MT |"
