@@ -23,7 +23,7 @@ from core.prompts import (
 )
 from services.meteo_service import fetch_monthly_weather, DEFAULT_WEATHER_VARS
 from services.rag_service import retrieve_rrl_context
-from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP
+from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP, compute_detailed_correlation
 from langchain_core.runnables import RunnableConfig
 from services.location_resolve import resolve_location_sqlite
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
@@ -280,7 +280,7 @@ def get_monthly_weather_tool(start_date: str, end_date: str, daily_vars: list[st
     try:
         df = fetch_monthly_weather(float(lat), float(lon), start_date, end_date, daily_vars=validated_vars)
         if df.empty:
-            return f"No weather data found for the requested location from {start_date} to {end_date}."
+            return json.dumps({"markdown": f"No weather data found for the requested location from {start_date} to {end_date}.", "structured_data": {}})
         
         # Keep result compact to avoid overwhelming the LLM
         md_output = f"### Monthly Weather Data\n\n"
@@ -304,7 +304,8 @@ def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, co
         return "Error: Location not provided or resolved."
         
     resolved_prov = state.location.province
-    return f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
+    md_output = f"| Metric | Value |\n|---|---|\n| {crop_type} Production in {resolved_prov} ({time_period_value}) | 1500 MT |"
+    return md_output
 
 
 def _parse_correlation_period(value: str) -> tuple[str, str]:
@@ -341,22 +342,44 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
 
     start_date, end_date = _parse_correlation_period(time_period_value)
 
-    r = correlations_by_province(
-        vars_,
+    details = compute_detailed_correlation(
+        weather_vars=vars_,
         outcomes=["YIELD", "PRODUCTION", "PRICE"],
         start_date=start_date,
         end_date=end_date,
-        lag_months=4,
         province_name=province,
+        selected_lag=4
     )
-    if r.empty:
+    
+    obs_df = details["observations"]
+    if obs_df.empty:
         return f"No correlation data available for {province} ({time_period_value})."
 
-    r = r.droplevel("province")
-    return (
-        f"Correlation for {crop_type} in {province} ({start_date} to {end_date}, 4-month lag):\n"
-        + r.round(3).to_markdown(index=True)
-    )
+    # Extract correlation matrix for markdown
+    lag_series = details["lag_series"]
+    selected_lag = details["selected_lag"]
+    r_matrix = lag_series.get(selected_lag, {})
+    
+    # Build markdown table manually since it's nested dicts
+    sample_size = len(obs_df)
+    md_lines = [f"Correlation for {crop_type} in {province} ({start_date} to {end_date}, {selected_lag}-month lag, sample size n={sample_size}):\n"]
+    md_lines.append("| Weather Variable | YIELD | PRODUCTION | PRICE |")
+    md_lines.append("|---|---|---|---|")
+    
+    for v in vars_:
+        r_yield = r_matrix.get(v, {}).get("YIELD")
+        r_prod = r_matrix.get(v, {}).get("PRODUCTION")
+        r_price = r_matrix.get(v, {}).get("PRICE")
+        
+        # Round the values
+        r_yield = round(r_yield, 3) if r_yield is not None else 'N/A'
+        r_prod = round(r_prod, 3) if r_prod is not None else 'N/A'
+        r_price = round(r_price, 3) if r_price is not None else 'N/A'
+        
+        md_lines.append(f"| {v} | {r_yield} | {r_prod} | {r_price} |")
+
+    md_output = "\n".join(md_lines)
+    return md_output
 
 
 @tool
@@ -375,7 +398,8 @@ def predict_outcome_tool(location: str, crop_type: str, time_period_value: str, 
     resolved_prov = state.location.province
     vars_used = ["precipitation_sum", "temperature_2m_mean", "temperature_2m_max", "temperature_2m_min"]
     vars_str = ", ".join(vars_used)
-    return f"Prediction for {crop_type} in {resolved_prov} ({time_period_value}):\nBased on the fixed production features ({vars_str}), the estimated yield is 4.2 MT/ha."
+    md_output = f"Prediction for {crop_type} in {resolved_prov} ({time_period_value}):\nBased on the fixed production features ({vars_str}), the estimated yield is 4.2 MT/ha."
+    return md_output
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +466,7 @@ def node_tool_execution(state: AgentState) -> dict:
     try:
         messages = list(state.messages or [])
         md_list = []
+        structured_payload = None
 
         for tool_call in state.tool_calls:
             name = tool_call["name"]
@@ -462,12 +487,10 @@ def node_tool_execution(state: AgentState) -> dict:
                 md = predict_outcome_tool.invoke(args, config)
             else:
                 md = f"Unknown tool: {name}"
+                
+            messages.append(ToolMessage(content=str(md), tool_call_id=tool_call_id))
 
-            messages.append(ToolMessage(content=md, tool_call_id=tool_call_id))
-            md_list.append(md)
-
-        combined_md = "\n\n".join(md_list)
-        return {"messages": messages, "weather_data_markdown": combined_md, "tool_calls": [], "error": None}
+        return {"messages": messages, "tool_calls": [], "error": None}
 
     except Exception as e:
         messages = list(state.messages or [])
@@ -525,31 +548,36 @@ def node_generation(state: AgentState) -> dict:
     if state.intent == "off-topic":
         return {"final_response": "I can only answer questions related to weather conditions and forecasts."}
 
-    weather_data = state.weather_data_markdown or "No data available."
-    rag_context_str = state.rag_context or "No literature context available."
-    
-    rag_instructions = f"""
-### WeatherTato Calculations
-The following data represents the live analytical results calculated from the project's datasets:
-{weather_data}
-
-### Published Research Evidence
-The following context contains relevant findings retrieved from the RRL:
-{rag_context_str}
-
-### Instructions for Generation
-- Clearly distinguish between "WeatherTato calculations" and "published research evidence."
-- Do not describe the numerical results as "live calculations." Use "WeatherTato calculations" instead.
-- Provide an explanation or interpretation connecting the two.
-- If the literature supports the calculations, explain the consistency. If it differs, explicitly state the differing findings or conditions.
-- DO NOT invent citations, numerical values, or findings that are not present in the Published Research Evidence.
-- Never present a correlation, coefficient, or numerical finding from the RRL as if it were calculated from WeatherTato's own dataset.
-"""
-
-    system_content = GENERATION_PROMPT.format(query=state.user_query, weather_data=rag_instructions)
-
+    # Extract tool results directly from messages
     raw_history = list(state.messages or [])
     resolved_tool_call_ids = {msg.tool_call_id for msg in raw_history if isinstance(msg, ToolMessage)}
+    
+    # We only care about the latest tool messages for generation context
+    tool_results_md = []
+    for msg in reversed(raw_history):
+        if isinstance(msg, ToolMessage):
+            tool_results_md.append(msg.content)
+        elif isinstance(msg, AIMessage) and msg.tool_calls:
+            break
+            
+    tool_results_md.reverse()
+    tool_results_str = "\n\n".join(tool_results_md) if tool_results_md else "No analytical data available."
+
+    rag_context_str = state.rag_context or "No literature context available."
+    
+    active_action = state.active_action or "UNKNOWN"
+    loc = state.slots.get("location") if state.slots else "Not specified"
+    period_dict = state.slots.get("time_period") if state.slots else {}
+    period_str = period_dict.get("value", "Not specified") if period_dict else "Not specified"
+    
+    system_content = GENERATION_PROMPT.format(
+        query=state.user_query,
+        active_action=active_action,
+        location=loc,
+        time_period=period_str,
+        tool_results=tool_results_str,
+        rag_context=rag_context_str
+    )
 
     safe_history = []
     for msg in raw_history:

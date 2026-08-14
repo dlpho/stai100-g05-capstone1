@@ -168,3 +168,41 @@ def correlations_by_province(
 
     out = pd.DataFrame(rows).set_index(["province", "weather_variable"])
     return out
+
+def compute_detailed_correlation(
+    weather_vars: list,
+    outcomes: list,
+    start_date: str,
+    end_date: str,
+    province_name: str,
+    selected_lag: int = 4
+) -> dict:
+    """Computes detailed correlation metrics for a specific province,
+    including exact observations and cross-lag correlations for visualization.
+    """
+    conn = sql.connect(DB_PATH)
+    try:
+        # Get exact observations at the selected lag
+        data_selected = _aligned_data(conn, weather_vars, start_date, end_date, selected_lag, province_name)
+        
+        # We only compute metrics for the selected_lag now that cross-lag visualizations are disabled.
+        lag_series = {}
+        lag_metrics = {}
+        for v in weather_vars:
+            lag_metrics[v] = {}
+            for o in outcomes:
+                col = OUTCOME_COLUMNS[o]
+                if v in data_selected.columns and col in data_selected.columns:
+                    s = data_selected[[v, col]].dropna()
+                    lag_metrics[v][o] = s[v].corr(s[col]) if len(s) > 1 else None
+        
+        lag_series[selected_lag] = lag_metrics
+            
+    finally:
+        conn.close()
+
+    return {
+        "observations": data_selected,
+        "lag_series": lag_series,
+        "selected_lag": selected_lag
+    }
