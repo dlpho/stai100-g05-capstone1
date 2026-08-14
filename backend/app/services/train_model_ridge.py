@@ -110,6 +110,7 @@ def main():
 
     y_feats = w_cols + ["hist_yield", "hist_price", "month_sin", "month_cos"] + p_cols
     p_feats = ["price_lag1", "price_lag12", "yield_lag1", "production_lag1", "hist_yield", "month_sin", "month_cos"] + w_cols + p_cols
+    pr_feats = w_cols + ["production_lag1", "month_sin", "month_cos"] + p_cols
 
     # Yield Baselines & Model
     b1_y = calc_metrics(test["target_yield"], test["hist_yield"])
@@ -143,11 +144,28 @@ def main():
     print(f"Prev Year:         {b2_p[0]:.3f}, {b2_p[1]:.3f}, {b2_p[2]:.3f}")
     print(f"ML Model (Ridge):  {ml_p[0]:.3f}, {ml_p[1]:.3f}, {ml_p[2]:.3f}")
 
+    # Production Baselines & Model
+    b1_pr = calc_metrics(test["target_production"], test["production_lag1"])
+    b2_pr = calc_metrics(test["target_production"], test["month"].map(train.groupby("month")["target_production"].mean()))
+
+    pr_model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("model", RidgeCV(alphas=[0.1, 1.0, 10.0, 100.0, 500.0]))
+    ])
+    pr_model.fit(train[pr_feats], train["target_production"])
+    ml_pr = calc_metrics(test["target_production"], pr_model.predict(test[pr_feats]))
+
+    print("\n--- Production Model Benchmarks (MAE, RMSE, R2) ---")
+    print(f"Prev Month:        {b1_pr[0]:.3f}, {b1_pr[1]:.3f}, {b1_pr[2]:.3f}")
+    print(f"Seasonal Avg:      {b2_pr[0]:.3f}, {b2_pr[1]:.3f}, {b2_pr[2]:.3f}")
+    print(f"ML Model (Ridge):  {ml_pr[0]:.3f}, {ml_pr[1]:.3f}, {ml_pr[2]:.3f}")
+
     os.makedirs(MODELS_DIR, exist_ok=True)
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     joblib.dump(y_model.fit(df[y_feats], df["target_yield"]), os.path.join(MODELS_DIR, f"ridge_yield_model_{timestamp}.joblib"))
     joblib.dump(p_model.fit(df[p_feats], df["target_price"]), os.path.join(MODELS_DIR, f"ridge_price_model_{timestamp}.joblib"))
+    joblib.dump(pr_model.fit(df[pr_feats], df["target_production"]), os.path.join(MODELS_DIR, f"ridge_production_model_{timestamp}.joblib"))
 
 if __name__ == "__main__":
     main()

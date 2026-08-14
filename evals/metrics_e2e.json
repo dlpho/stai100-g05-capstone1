@@ -1,0 +1,22 @@
+{
+  "e2e": {
+    "cases": [
+      {
+        "query": "What was the rainfall in Pampanga last month?",
+        "elapsed_s": 15.19,
+        "tokens": 1843,
+        "judge_scores": {
+          "correctness": 1,
+          "completeness": 3,
+          "faithfulness": 1,
+          "relevance": 5,
+          "clarity": 5,
+          "overall": 2,
+          "reasoning": "The answer provides specific rainfall data and a month, but the retrieved context is empty, so the factual claims are ungrounded and likely hallucinated, despite being clearly presented and on-topic."
+        },
+        "pass": true
+      }
+    ],
+    "n_cases": 1
+  }
+}

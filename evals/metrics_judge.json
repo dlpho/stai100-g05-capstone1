@@ -10,19 +10,19 @@
           "relevance": 5,
           "clarity": 5,
           "overall": 5,
-          "reasoning": "The answer accurately and concisely reports the contextual palay yield figure of 4.1 MT/ha for Pampanga in 2023, fully addressing the query without adding unsupported information."
+          "reasoning": "The answer accurately and concisely provides the requested palay yield for Pampanga in 2023, fully grounded in the retrieved context."
         }
       },
       {
         "label": "hallucinated",
         "scores": {
           "correctness": 1,
-          "completeness": 2,
+          "completeness": 1,
           "faithfulness": 1,
           "relevance": 2,
-          "clarity": 4,
-          "overall": 2,
-          "reasoning": "The assistant gives a factually wrong yield (9.8 MT/ha instead of 4.1 MT/ha) and invents an unsupported future doubling prediction, so it is not faithful to or accurate about the retrieved context, though its phrasing is clear."
+          "clarity": 3,
+          "overall": 1,
+          "reasoning": "The answer gives an incorrect yield figure (9.8 MT/ha instead of the contextual 4.1 MT/ha), adds an unsupported prediction, and fails to answer the query accurately."
         }
       },
       {
@@ -34,19 +34,19 @@
           "relevance": 1,
           "clarity": 2,
           "overall": 1,
-          "reasoning": "The assistant completely ignored the query and provided irrelevant, ungrounded trivia instead of the requested Palay yield in Pampanga."
+          "reasoning": "The assistant ignored the provided palay yield context and gave irrelevant, hallucinated facts instead of answering the query."
         }
       }
     ],
     "pairwise_original": {
       "winner": "A",
-      "reasoning": "Answer A correctly states the palay yield as 4.1 MT/ha per the context, while Answer B provides an incorrect figure and unsupported prediction."
+      "reasoning": "Answer A correctly states the 2023 palay yield as 4.1 MT/ha per context, while Answer B gives an incorrect figure and adds unsupported speculation."
     },
     "pairwise_swapped": {
       "winner": "B",
-      "reasoning": "Answer B correctly states the 2023 Pampanga palay yield as 4.1 MT/ha, while Answer A gives an incorrect value and an unsupported future claim."
+      "reasoning": "Answer B correctly matches the provided context of 4.1 MT/ha, while Answer A gives an incorrect yield and adds an unsupported prediction."
     },
     "positional_bias": "content-consistent (correctly picks the good answer in both orders)",
-    "elapsed_s": 18.2
+    "elapsed_s": 11.7
   }
 }

@@ -20,8 +20,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "backend", "app"))
 
 from langchain_openai import ChatOpenAI
-from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
-from core.guardrails import is_on_topic
+from backend.app.core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
+from backend.app.core.guardrails import is_on_topic
 from judge_prompts import (
     ABSOLUTE_JUDGE_SYSTEM, ABSOLUTE_JUDGE_USER,
     PAIRWISE_JUDGE_SYSTEM, PAIRWISE_JUDGE_USER,
@@ -171,7 +171,6 @@ def eval_judge(llm):
 def eval_trajectory():
     """Scaffold: run the full graph and match the tool-call sequence against
     golden_data.json['trajectories']. Needs the compiled graph (heavy import)."""
-    from golden_data import _load  # noqa
     raise NotImplementedError(
         "Trajectory eval requires the running LangGraph agent. See README "
         "(run from backend/ with `python test_react_loop.py` pattern, or wire "

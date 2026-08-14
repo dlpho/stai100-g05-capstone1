@@ -86,7 +86,7 @@
         {
           "name": "predict_service returns plausible values",
           "ok": true,
-          "detail": "yield=5.202 MT/ha, price=49.98 PHP/kg"
+          "detail": "yield=5.196 MT/ha, price=50.02 PHP/kg"
         }
       ],
       "passed": 9,

@@ -132,24 +132,20 @@ def docs():
 def samples():
     st.logo(logo)
     st.title("💡 Sample Queries")
-    st.markdown("Click any sample query below to instantly test it in the chat!")
+    st.markdown("Here are 10 representative queries that exhibit the wide range of capabilities of WeatherTato. Try copying and pasting any of these into the chat!")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Hey WeatherTato, what can you help me with?", use_container_width=True):
-            st.session_state.pending_prompt = "Hey WeatherTato, what can you help me with?"
-            st.switch_page(page_chat_obj)
-        if st.button("What is the weather like in Manila tomorrow?", use_container_width=True):
-            st.session_state.pending_prompt = "What is the weather like in Manila tomorrow?"
-            st.switch_page(page_chat_obj)
-            
-    with col2:
-        if st.button("Give me the soil temperature, wind speed, and soil moisture for Barangay Poblacion, Alicia, Bohol.", use_container_width=True):
-            st.session_state.pending_prompt = "Give me the soil temperature, wind speed, and soil moisture for Barangay Poblacion, Alicia, Bohol."
-            st.switch_page(page_chat_obj)
-        if st.button("What is the year with the most rainfall in 2023 to 2026 in Makati City?", use_container_width=True):
-            st.session_state.pending_prompt = "What is the year with the most rainfall in 2023 to 2026 in Makati City?"
-            st.switch_page(page_chat_obj)
+    st.markdown("""
+1. **Historical Weather Data:** "What was the total rainfall and peak temperature in Nueva Ecija from June to October 2023?"
+2. **Crop Yield Analytics:** "What was the recorded palay yield in Metric Tons per Hectare (MT/ha) for Pampanga in 2022?"
+3. **Yield vs. Weather Correlation:** "How did the extreme heat days correlate with palay production in Tarlac between 2015 and 2023?"
+4. **Machine Learning Yield Prediction:** "Predict the palay yield for Bulacan in 2024 based on the antecedent growing season weather."
+5. **Machine Learning Price Prediction:** "Based on the climatic conditions, predict the retail price of palay in Zambales for 2024."
+6. **Extremes and Anomalies:** "Which year had the highest recorded rainfall in Aurora between 2010 and 2020?"
+7. **Multi-Variable Agronomic Analysis:** "How does soil moisture and shortwave radiation affect rice production in Bataan?"
+8. **Literature-Grounded Explanations:** "According to literature, how does prolonged heat stress (extreme heat days) impact palay yield?"
+9. **Complex Time Periods:** "What was the average temperature and evapotranspiration in Nueva Ecija during Q3 2023?"
+10. **Agent Capabilities:** "What kind of agricultural and weather data can you analyze for me?"
+    """)
 
 
 def settings():

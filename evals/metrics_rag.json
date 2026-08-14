@@ -4,7 +4,7 @@
     "recall@2": 1.0,
     "mrr": 0.875,
     "n_cases": 8,
-    "elapsed_s": 43.0,
+    "elapsed_s": 31.2,
     "per_case": [
       {
         "query": "How does rainfall affect rice yield?",

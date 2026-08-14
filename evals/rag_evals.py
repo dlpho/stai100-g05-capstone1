@@ -18,7 +18,7 @@ GOLDEN = os.path.join(os.path.dirname(__file__), "golden_data.json")
 
 
 def retrieve(query, top_k=2):
-    from services.rag_service import get_chroma_collection, get_embedder
+    from backend.app.services.rag_service import get_chroma_collection, get_embedder
     collection = get_chroma_collection()
     embedder = get_embedder()
     q_emb = embedder.encode([query]).tolist()
@@ -65,11 +65,18 @@ def main():
                          "expected": case["relevant_sections"], "rr": rr})
 
     n = len(precisions)
+    if n == 0:
+        p2, r2, mrr = 0.0, 0.0, 0.0
+    else:
+        p2 = round(sum(precisions) / n, 3)
+        r2 = round(sum(recalls) / n, 3)
+        mrr = round(sum(rr_scores) / n, 3)
+
     results = {
         "rag": {
-            "precision@2": round(sum(precisions) / n, 3),
-            "recall@2": round(sum(recalls) / n, 3),
-            "mrr": round(sum(rr_scores) / n, 3),
+            "precision@2": p2,
+            "recall@2": r2,
+            "mrr": mrr,
             "n_cases": n,
             "elapsed_s": round(time.time() - t0, 1),
             "per_case": per_case,

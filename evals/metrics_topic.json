@@ -2,7 +2,7 @@
   "topic_classifier": {
     "blocked_accuracy": 1.0,
     "topic_accuracy": 1.0,
-    "elapsed_s": 11.0,
+    "elapsed_s": 11.1,
     "per_case": [
       {
         "query": "What was the rainfall in Pampanga last month?",
@@ -20,7 +20,7 @@
         "fallback": false,
         "blocked_ok": true,
         "topic_ok": true,
-        "confidence": 1.0
+        "confidence": 0.99
       },
       {
         "query": "Is there a correlation between rainfall and palay yield?",
@@ -38,7 +38,7 @@
         "fallback": false,
         "blocked_ok": true,
         "topic_ok": true,
-        "confidence": 0.98
+        "confidence": 0.99
       },
       {
         "query": "What kind of data can you analyze?",
@@ -56,7 +56,7 @@
         "fallback": true,
         "blocked_ok": true,
         "topic_ok": true,
-        "confidence": 0.99
+        "confidence": 0.98
       },
       {
         "query": "Who won the World Cup in 2022?",
@@ -74,7 +74,7 @@
         "fallback": true,
         "blocked_ok": true,
         "topic_ok": true,
-        "confidence": 0.99
+        "confidence": 0.95
       },
       {
         "query": "When should I harvest my palay crop?",
@@ -83,7 +83,7 @@
         "fallback": true,
         "blocked_ok": true,
         "topic_ok": true,
-        "confidence": 1.0
+        "confidence": 0.98
       }
     ],
     "n_cases": 9
