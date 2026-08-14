@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS dim_barangay (
     FOREIGN KEY (city_municipality_id) REFERENCES dim_city_municipality(city_municipality_id) ON DELETE CASCADE
 );
 
-INSERT INTO dim_province (region_name, province_name, latitude, longitude) VALUES
+INSERT OR IGNORE INTO dim_province (region_name, province_name, latitude, longitude) VALUES
 ('Region III (Central Luzon)', 'Aurora', 15.922812842207223, 121.69931394152403),
 ('Region III (Central Luzon)', 'Bataan', 14.660422834689955, 120.4544259554945),
 ('Region III (Central Luzon)', 'Bulacan', 14.97861601658849, 121.05847123279369),

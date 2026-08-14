@@ -3,7 +3,7 @@ WeatherTato — API Route Handler
 """
 import logging
 import sqlite3
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 
 from models.schemas import UserQuery
 from services.llm_service import compiled_graph
@@ -88,3 +88,84 @@ def chat_endpoint(query: UserQuery) -> dict:
             logger.warning(f"[MLflow Warning] MLflow tracking failed: {e}")
             return run_agent(query)
     return run_agent(query)
+
+
+def run_etl_job():
+    logger.info("Starting ETL Job from API...")
+    from services.etl.etl import insert_into_palay_production, insert_into_retail
+    
+    # Use get_db context to run ETL
+    conn_generator = get_db()
+    conn = next(conn_generator)
+    try:
+        cur = conn.cursor()
+        insert_into_palay_production(cur)
+        insert_into_retail(cur)
+        conn.commit()
+        logger.info("ETL Job completed successfully.")
+    except Exception as e:
+        logger.error(f"ETL Job failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+@router.post("/etl/run")
+def trigger_etl(background_tasks: BackgroundTasks) -> dict:
+    """Trigger the ETL pipeline to run in the background."""
+    background_tasks.add_task(run_etl_job)
+    return {"status": "success", "message": "ETL job started in the background."}
+
+@router.on_event("startup")
+def startup_event():
+    """Run seeding and ETL on startup in the background."""
+    import threading
+    
+    def run_startup_tasks():
+        logger.info("Running startup tasks: seedlocs and ETL...")
+        # 1. seedlocs
+        try:
+            import os
+            import sys
+            import csv
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+            if root_dir not in sys.path:
+                sys.path.append(root_dir)
+            from data.seed_locs import seed_muni, seed_brgy
+            
+            conn_generator = get_db()
+            conn = next(conn_generator)
+            try:
+                cur = conn.cursor()
+                
+                # Execute init.sql first to ensure schema exists
+                init_sql_path = os.path.join(root_dir, "data", "init.sql")
+                if os.path.exists(init_sql_path):
+                    with open(init_sql_path, "r", encoding="utf-8") as sql_file:
+                        cur.executescript(sql_file.read())
+                
+                cur.execute("PRAGMA foreign_keys = ON;")
+                muni_csv = os.path.join(root_dir, "data", "philippines_municities_coordinates_2023.csv")
+                brgy_csv = os.path.join(root_dir, "data", "philippines_barangay_coordinates_2023.csv")
+                
+                with open(muni_csv, "r", encoding="utf-8") as f:
+                    mdata = list(csv.DictReader(f))
+                with open(brgy_csv, "r", encoding="utf-8") as f:
+                    bdata = list(csv.DictReader(f))
+                    
+                seed_muni(cur, mdata)
+                seed_brgy(cur, bdata)
+                conn.commit()
+                logger.info("Seedlocs completed successfully on startup.")
+            except Exception as e:
+                logger.error(f"Seedlocs failed: {e}")
+                conn.rollback()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Could not import or run seed_locs: {e}")
+            
+        # 2. etl
+        run_etl_job()
+
+    # Run in a background thread so we don't block server startup
+    threading.Thread(target=run_startup_tasks, daemon=True).start()
