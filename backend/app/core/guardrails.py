@@ -182,7 +182,8 @@ def remove_pii(text: str) -> str:
     # Replace matching PII with placeholder tags to prevent data leakage
     text = re.sub(EMAIL_REGEX, "[REDACTED-EMAIL]", text)
     text = re.sub(PHONE_REGEX, "[REDACTED-PHONENUMBER]", text)
-    text = re.sub(NAME_REGEX, "[REDACTED-NAME]", text)
+    # NOTE: flags=re.IGNORECASE so capitalized "My name is" / "I am named" match too
+    text = re.sub(NAME_REGEX, "[REDACTED-NAME]", text, flags=re.IGNORECASE)
     return text
 
 

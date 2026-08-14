@@ -1,0 +1,52 @@
+{
+  "llm_judge": {
+    "absolute": [
+      {
+        "label": "good",
+        "scores": {
+          "correctness": 5,
+          "completeness": 5,
+          "faithfulness": 5,
+          "relevance": 5,
+          "clarity": 5,
+          "overall": 5,
+          "reasoning": "The answer accurately and concisely reports the contextual palay yield figure of 4.1 MT/ha for Pampanga in 2023, fully addressing the query without adding unsupported information."
+        }
+      },
+      {
+        "label": "hallucinated",
+        "scores": {
+          "correctness": 1,
+          "completeness": 2,
+          "faithfulness": 1,
+          "relevance": 2,
+          "clarity": 4,
+          "overall": 2,
+          "reasoning": "The assistant gives a factually wrong yield (9.8 MT/ha instead of 4.1 MT/ha) and invents an unsupported future doubling prediction, so it is not faithful to or accurate about the retrieved context, though its phrasing is clear."
+        }
+      },
+      {
+        "label": "off_topic",
+        "scores": {
+          "correctness": 1,
+          "completeness": 1,
+          "faithfulness": 1,
+          "relevance": 1,
+          "clarity": 2,
+          "overall": 1,
+          "reasoning": "The assistant completely ignored the query and provided irrelevant, ungrounded trivia instead of the requested Palay yield in Pampanga."
+        }
+      }
+    ],
+    "pairwise_original": {
+      "winner": "A",
+      "reasoning": "Answer A correctly states the palay yield as 4.1 MT/ha per the context, while Answer B provides an incorrect figure and unsupported prediction."
+    },
+    "pairwise_swapped": {
+      "winner": "B",
+      "reasoning": "Answer B correctly states the 2023 Pampanga palay yield as 4.1 MT/ha, while Answer A gives an incorrect value and an unsupported future claim."
+    },
+    "positional_bias": "content-consistent (correctly picks the good answer in both orders)",
+    "elapsed_s": 18.2
+  }
+}

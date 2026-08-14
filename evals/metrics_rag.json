@@ -1,0 +1,99 @@
+{
+  "rag": {
+    "precision@2": 0.5,
+    "recall@2": 1.0,
+    "mrr": 0.875,
+    "n_cases": 8,
+    "elapsed_s": 43.0,
+    "per_case": [
+      {
+        "query": "How does rainfall affect rice yield?",
+        "got_sections": [
+          "Extreme Rainfall and Yield",
+          "Rainfall / Precipitation and Yield"
+        ],
+        "expected": [
+          "Rainfall / Precipitation and Yield"
+        ],
+        "rr": 0.5
+      },
+      {
+        "query": "What temperature is optimal for rice production in Luzon?",
+        "got_sections": [
+          "Temperature and Yield",
+          "Extreme Heat and Yield"
+        ],
+        "expected": [
+          "Temperature and Yield"
+        ],
+        "rr": 1.0
+      },
+      {
+        "query": "What happens to rice yield during extreme heat?",
+        "got_sections": [
+          "Extreme Heat and Yield",
+          "Extreme Rainfall and Yield"
+        ],
+        "expected": [
+          "Extreme Heat and Yield"
+        ],
+        "rr": 1.0
+      },
+      {
+        "query": "How does extreme rainfall damage rice crops?",
+        "got_sections": [
+          "Extreme Rainfall and Yield",
+          "Rice Yield / Production and Price"
+        ],
+        "expected": [
+          "Extreme Rainfall and Yield"
+        ],
+        "rr": 1.0
+      },
+      {
+        "query": "How does soil moisture relate to rice production?",
+        "got_sections": [
+          "Soil Moisture and Yield",
+          "Cross-Study Patterns and Interpretation"
+        ],
+        "expected": [
+          "Soil Moisture and Yield"
+        ],
+        "rr": 1.0
+      },
+      {
+        "query": "Which weather variables matter besides rain and temperature?",
+        "got_sections": [
+          "Cross-Study Patterns and Interpretation",
+          "Other Relevant Weather Variables"
+        ],
+        "expected": [
+          "Other Relevant Weather Variables"
+        ],
+        "rr": 0.5
+      },
+      {
+        "query": "How does weather affect rice prices?",
+        "got_sections": [
+          "Rice Yield / Production and Price",
+          "Extreme Rainfall and Yield"
+        ],
+        "expected": [
+          "Rice Yield / Production and Price"
+        ],
+        "rr": 1.0
+      },
+      {
+        "query": "Is the relationship between weather and yield linear or nonlinear?",
+        "got_sections": [
+          "Cross-Study Patterns and Interpretation",
+          "Other Relevant Weather Variables"
+        ],
+        "expected": [
+          "Cross-Study Patterns and Interpretation"
+        ],
+        "rr": 1.0
+      }
+    ]
+  }
+}

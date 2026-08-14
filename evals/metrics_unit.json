@@ -1,0 +1,96 @@
+{
+  "unit": {
+    "guardrails": {
+      "prompt_injection": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "accuracy": 1.0,
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "tn": 23
+      },
+      "out_of_scope": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "accuracy": 1.0,
+        "tp": 8,
+        "fp": 0,
+        "fn": 0,
+        "tn": 21
+      },
+      "pii_redaction": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "accuracy": 1.0,
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "tn": 24
+      },
+      "pii_failures": [],
+      "n_cases": 29
+    },
+    "location": {
+      "province_accuracy": 1.0,
+      "status_accuracy": 1.0,
+      "resolved": 10,
+      "failures": [],
+      "n_cases": 14
+    },
+    "sql_tools": {
+      "checks": [
+        {
+          "name": "fact_weather_monthly populated",
+          "ok": true,
+          "detail": "1225 rows"
+        },
+        {
+          "name": "weather wind/et0/shortwave seeded",
+          "ok": true,
+          "detail": "0 NULL rows"
+        },
+        {
+          "name": "fact_palay_production populated",
+          "ok": true,
+          "detail": "1386 rows"
+        },
+        {
+          "name": "fact_retail_prices populated",
+          "ok": true,
+          "detail": "1225 rows"
+        },
+        {
+          "name": "7 provinces with palay data",
+          "ok": true,
+          "detail": "7 provinces"
+        },
+        {
+          "name": "v_ml_market_features has lag columns",
+          "ok": true,
+          "detail": "missing=[]"
+        },
+        {
+          "name": "WEATHER_VAR_MAP correct",
+          "ok": true,
+          "detail": "{'RAINFALL': 'precipitation_sum', 'MEAN_TEMP': 'temperature_2m_mean', 'MAX_TEMP': 'temperature_2m_max', 'MIN_TEMP': 'temperature_2m_min', 'SOIL_MOISTURE': 'soil_moisture_0_to_100cm_mean', 'SURFACE_PRESSURE': 'surface_pressure_mean'}"
+        },
+        {
+          "name": "OUTCOME_COLUMNS correct",
+          "ok": true,
+          "detail": "{'YIELD': 'yield_mt_per_ha', 'PRODUCTION': 'volume_metric_tons', 'PRICE': 'retail_price_php'}"
+        },
+        {
+          "name": "predict_service returns plausible values",
+          "ok": true,
+          "detail": "yield=5.202 MT/ha, price=49.98 PHP/kg"
+        }
+      ],
+      "passed": 9,
+      "total": 9
+    }
+  }
+}

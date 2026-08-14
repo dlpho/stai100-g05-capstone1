@@ -1,0 +1,91 @@
+{
+  "topic_classifier": {
+    "blocked_accuracy": 1.0,
+    "topic_accuracy": 1.0,
+    "elapsed_s": 11.0,
+    "per_case": [
+      {
+        "query": "What was the rainfall in Pampanga last month?",
+        "expected_topic": "WEATHER",
+        "got_topic": "WEATHER",
+        "fallback": false,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 0.99
+      },
+      {
+        "query": "What was the palay yield in Nueva Ecija in 2023?",
+        "expected_topic": "CROP",
+        "got_topic": "CROP",
+        "fallback": false,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 1.0
+      },
+      {
+        "query": "Is there a correlation between rainfall and palay yield?",
+        "expected_topic": "RELATIONSHIP",
+        "got_topic": "RELATIONSHIP",
+        "fallback": false,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 0.99
+      },
+      {
+        "query": "What can you do?",
+        "expected_topic": "GENERAL",
+        "got_topic": "GENERAL",
+        "fallback": false,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 0.98
+      },
+      {
+        "query": "What kind of data can you analyze?",
+        "expected_topic": "GENERAL",
+        "got_topic": "GENERAL",
+        "fallback": false,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 0.99
+      },
+      {
+        "query": "Should I plant rice this month?",
+        "expected_topic": "ADVICE",
+        "got_topic": "ADVICE",
+        "fallback": true,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 0.99
+      },
+      {
+        "query": "Who won the World Cup in 2022?",
+        "expected_topic": "OFF_TOPIC",
+        "got_topic": "OFF_TOPIC",
+        "fallback": true,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 1.0
+      },
+      {
+        "query": "What will the weather be like tomorrow?",
+        "expected_topic": "FORECAST",
+        "got_topic": "FORECAST",
+        "fallback": true,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 0.99
+      },
+      {
+        "query": "When should I harvest my palay crop?",
+        "expected_topic": "ADVICE",
+        "got_topic": "ADVICE",
+        "fallback": true,
+        "blocked_ok": true,
+        "topic_ok": true,
+        "confidence": 1.0
+      }
+    ],
+    "n_cases": 9
+  }
+}
