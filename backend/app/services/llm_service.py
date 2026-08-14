@@ -21,7 +21,8 @@ from core.prompts import (
     build_memory_summary_prompt,
     GENERATION_PROMPT,
 )
-from services.meteo_service import get_weather_analytics
+from services.meteo_service import fetch_monthly_weather, DEFAULT_WEATHER_VARS
+from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP
 from langchain_core.runnables import RunnableConfig
 from services.location_resolve import resolve_location_sqlite
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
@@ -239,20 +240,19 @@ def node_location_resolution(state: AgentState) -> dict:
 # Removed _resolve_location and location_search dependency
 
 @tool
-def get_weather_analytics_tool(location: str, start_date: str, end_date: str, daily_vars: list[str], granularity: str = "day", inner_aggregation: str = "mean", find_extreme: str = "none", config: RunnableConfig = None) -> str:
-    """Gets historical weather analytics data for a location.
+def get_monthly_weather_tool(start_date: str, end_date: str, daily_vars: list[str] = None, config: RunnableConfig = None) -> str:
+    """Gets historical monthly weather analytics data for the user's location.
     Args:
-        location: The name of the city, municipality, or province.
         start_date: Exact start date in YYYY-MM-DD (must be a past date).
         end_date: Exact end date in YYYY-MM-DD (must be a past date).
-        daily_vars: List of daily variables. Allowed values: precipitation_sum, rain_sum, sunshine_duration, temperature_2m_max, temperature_2m_min, temperature_2m_mean, wind_speed_10m_max, et0_fao_evapotranspiration, soil_moisture_0_to_100cm_mean, vapour_pressure_deficit_max, relative_humidity_2m_mean, relative_humidity_2m_max, soil_temperature_0_to_100cm_mean. Return [] if none specified.
-        granularity: 'day', 'month', or 'year'. Default 'day'.
-        inner_aggregation: 'mean', 'max', or 'min'. Default 'mean'.
-        find_extreme: 'highest', 'lowest', or 'none'. Default 'none'.
+        daily_vars: List of daily variables to fetch. Allowed values: precipitation_sum, temperature_2m_mean, temperature_2m_max, temperature_2m_min, surface_pressure_mean, soil_moisture_0_to_100cm_mean. Leave empty for default core variables.
     """
     state: AgentState = config.get("configurable", {}).get("state")
     if not state or not state.location:
-        return "Error: Location not provided or resolved."
+        return "Error: Location not provided or resolved. Please ensure location is resolved first."
+        
+    if not start_date or not end_date:
+        return "Error: Both start_date and end_date must be provided."
         
     loc = state.location
     active_action = state.active_action
@@ -264,9 +264,31 @@ def get_weather_analytics_tool(location: str, start_date: str, end_date: str, da
         lat = loc.province_latitude
         lon = loc.province_longitude
 
-    if not daily_vars:
-        daily_vars = ["temperature_2m_max", "temperature_2m_min", "precipitation_sum", "wind_speed_10m_max"]
-    return get_weather_analytics(float(lat), float(lon), start_date, end_date, daily_vars, granularity, inner_aggregation, find_extreme)
+    # Validate requested variables against allowed set
+    validated_vars = []
+    discarded_vars = []
+    if daily_vars:
+        for v in daily_vars:
+            if v in DEFAULT_WEATHER_VARS:
+                validated_vars.append(v)
+            else:
+                discarded_vars.append(v)
+    if not validated_vars:
+        validated_vars = DEFAULT_WEATHER_VARS
+
+    try:
+        df = fetch_monthly_weather(float(lat), float(lon), start_date, end_date, daily_vars=validated_vars)
+        if df.empty:
+            return f"No weather data found for the requested location from {start_date} to {end_date}."
+        
+        # Keep result compact to avoid overwhelming the LLM
+        md_output = f"### Monthly Weather Data\n\n"
+        if discarded_vars:
+            md_output += f"**Warning:** The following requested variables are invalid and were discarded: {', '.join(discarded_vars)}\n\n"
+        md_output += df.to_markdown(index=False)
+        return md_output
+    except Exception as e:
+        return f"Error fetching weather data from Open-Meteo: {str(e)}"
 
 @tool
 def get_crop_data_tool(location: str, crop_type: str, time_period_value: str, config: RunnableConfig = None) -> str:
@@ -340,7 +362,7 @@ def node_tool_caller(state: AgentState) -> dict:
     weekday_str = today_dt.strftime("%A")
 
     tools = [
-        get_weather_analytics_tool,
+        get_monthly_weather_tool,
         get_crop_data_tool,
         analyze_correlation_tool,
         predict_outcome_tool
@@ -395,8 +417,8 @@ def node_tool_execution(state: AgentState) -> dict:
 
             config = {"configurable": {"state": state}}
             
-            if name == "get_weather_analytics_tool":
-                md = get_weather_analytics_tool.invoke(args, config)
+            if name == "get_monthly_weather_tool":
+                md = get_monthly_weather_tool.invoke(args, config)
             elif name == "get_crop_data_tool":
                 md = get_crop_data_tool.invoke(args, config)
             elif name == "analyze_correlation_tool":
