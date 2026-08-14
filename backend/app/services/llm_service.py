@@ -495,7 +495,9 @@ def node_tool_execution(state: AgentState) -> dict:
 
             # if name == "get_weather_analytics_tool":
                 # md = get_weather_analytics_tool.invoke(args, config)
-            if name == "get_crop_data_tool":
+            if name == "get_monthly_weather_tool":
+                md = get_monthly_weather_tool.invoke(args, config)
+            elif name == "get_crop_data_tool":
                 md = get_crop_data_tool.invoke(args, config)
             elif name == "analyze_correlation_tool":
                 md = analyze_correlation_tool.invoke(args, config)
@@ -572,11 +574,14 @@ def node_generation(state: AgentState) -> dict:
 
     # We only care about the latest tool messages for generation context
     tool_results_md = []
+    found_tool_turn = False
     for msg in reversed(raw_history):
         if isinstance(msg, ToolMessage):
             tool_results_md.append(msg.content)
-        elif isinstance(msg, AIMessage) and msg.tool_calls:
-            break
+            found_tool_turn = True
+        elif isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+            if found_tool_turn:
+                break
 
     tool_results_md.reverse()
     tool_results_str = "\n\n".join(tool_results_md) if tool_results_md else "No analytical data available."

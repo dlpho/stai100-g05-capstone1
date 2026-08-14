@@ -5,7 +5,7 @@ import joblib
 import pandas as pd
 import numpy as np
 
-from backend.app.services.train_model import WEATHER_VARS
+from services.train_model import WEATHER_VARS
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MODELS_DIR = os.path.join(ROOT_DIR, "services", "models")
 
