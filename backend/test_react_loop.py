@@ -41,7 +41,7 @@ def run_test(test_name: str, query: str):
             if key == "location_resolution":
                 if "location" in value:
                     loc = value["location"]
-                    print(f"  -> Resolved Location: {loc.barangay} -> (lat: {loc.latitude}, lon: {loc.longitude})")
+                    print(f"  -> Resolved Location: {loc.resolved_name} ({loc.granularity}) -> (lat: {loc.latitude}, lon: {loc.longitude})")
 
             if key == "generation":
                 print(f"FINAL RESPONSE:\n{value.get('final_response', '')}")
