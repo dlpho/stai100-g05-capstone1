@@ -9,14 +9,12 @@ st.markdown("### What WeatherTato CAN Handle")
 
 col1, col2 = st.columns(2)
 with col1:
-    st.success("**Historical Weather Analysis**\n\nRetrieves and aggregates historical meteorological data (temperature, rainfall, soil moisture, etc.) for any location in the Philippines.")
-    st.success("**Crop Yield Analytics**\n\nAccesses historical palay (rice) production volume, yield (MT/ha), and retail prices specifically for Region III (Central Luzon).")
+    st.success("**Historical Weather Analysis**\n\nRetrieves and aggregates historical meteorological data (temperature, rainfall, soil moisture, etc.) for any location in the Philippines. We support yearly, quarterly, and monthly granularities.")
+    st.success("**Statistical Correlation**\n\nCalculates Pearson correlation coefficients between lagged weather variables and agricultural outcomes. This is evaluated strictly at a monthly granularity to ensure relationships are correctly captured.")
 
 with col2:
-    st.success("**Statistical Correlation**\n\nCalculates Pearson correlation coefficients between lagged weather variables and agricultural outcomes over specified time periods.")
-    st.success("**Machine Learning Prediction**\n\nUses Scikit-Learn Lasso regression models to predict palay yield and prices based on historical weather patterns.")
-
-st.success("**Literature Grounding (RAG)**\n\nCross-references statistical findings with a curated vector database of agronomic literature to explain *why* certain correlations exist.")
+    st.success("**Machine Learning Prediction**\n\nUses Scikit-Learn Lasso regression models to predict palay yield and prices one step forward (e.g. next month) based on historical weather patterns.")
+    st.success("**Literature Grounding (RAG)**\n\nCross-references statistical findings with a curated vector database of agronomic literature to explain *why* certain correlations exist.")
 
 st.markdown("---")
 
@@ -37,8 +35,8 @@ st.markdown("---")
 st.markdown("### Backend Architecture Overview")
 st.markdown("""
 WeatherTato operates on a **LangGraph** orchestration pipeline:
-1. **Guardrails:** Intercepts unsupported queries (like farming advice or future forecasts) before they reach the execution engine.
-2. **Intent Extraction:** Powered by DeepSeek-V4-Flash, the agent dynamically extracts locations, dates, and variables from natural language.
-3. **Deterministic Tools:** Instead of hallucinating numbers, the agent invokes dedicated Python scripts to query SQLite databases or Open-Meteo APIs.
-4. **Context Synthesis:** Final answers are synthesized by weaving together raw statistical data and retrieved agronomic literature.
+1. **Guardrails** intercept unsupported queries (like farming advice or future forecasts) before they reach the execution engine.
+2. **Intent Classifier**, powered by DeepSeek-V4-Flash, dynamically extracts locations, dates, and variables from natural language.
+3. **Computation Logic**  are done with deterministic tools or scripts that are LLM-invoked whenever it needs, instead of being done by the LLM istelf to ensure computative accuracy and no hallucination.
+4. **Final answers** are synthesized by weaving together raw statistical data and selected RRL related to interpreting weather and palay correlations.
 """)

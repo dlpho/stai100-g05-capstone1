@@ -153,49 +153,59 @@ def samples():
     st.title("Sample Queries")
     st.markdown("Click any sample query below to instantly test it in the chat! These queries exhibit the full range of WeatherTato's analytical capabilities.")
 
-    st.markdown("#### Historical Weather & Extremes")
+    st.markdown("#### Weather & Capabilities")
     c1, c2 = st.columns(2)
+
     with c1:
-        if st.button("What was the total rainfall and peak temperature in Nueva Ecija from June to October 2023?", use_container_width=True):
-            st.session_state.pending_prompt = "What was the total rainfall and peak temperature in Nueva Ecija from June to October 2023?"
+        if st.button("What was the weather like in Nueva Ecija in September 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "What was the weather like in Nueva Ecija in September 2023?"
             st.switch_page(page_chat_obj)
-        if st.button("Which year had the highest recorded rainfall in Aurora between 2010 and 2020?", use_container_width=True):
-            st.session_state.pending_prompt = "Which year had the highest recorded rainfall in Aurora between 2010 and 2020?"
+
+        if st.button("What was the rainfall and temperature in Pampanga during August 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "What was the rainfall and temperature in Pampanga during August 2023?"
             st.switch_page(page_chat_obj)
+
+        if st.button("What was the weather like in Palayan City in September 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "What was the weather like in Palayan City in September 2023?"
+            st.switch_page(page_chat_obj)
+
     with c2:
-        if st.button("What was the average temperature and evapotranspiration in Nueva Ecija during Q3 2023?", use_container_width=True):
-            st.session_state.pending_prompt = "What was the average temperature and evapotranspiration in Nueva Ecija during Q3 2023?"
-            st.switch_page(page_chat_obj)
-        if st.button("What kind of agricultural and weather data can you analyze for me?", use_container_width=True):
-            st.session_state.pending_prompt = "What kind of agricultural and weather data can you analyze for me?"
+        if st.button("What weather variables can WeatherTato analyze?", use_container_width=True):
+            st.session_state.pending_prompt = "What weather variables can WeatherTato analyze?"
             st.switch_page(page_chat_obj)
 
-    st.markdown("#### Crop Yield & Analytics")
+        if st.button("What can WeatherTato help me analyze?", use_container_width=True):
+            st.session_state.pending_prompt = "What can WeatherTato help me analyze?"
+            st.switch_page(page_chat_obj)
+
+    st.markdown("#### Weather & Palay Relationships")
     c3, c4 = st.columns(2)
+
     with c3:
-        if st.button("What was the recorded palay yield in Metric Tons per Hectare for Pampanga in 2022?", use_container_width=True):
-            st.session_state.pending_prompt = "What was the recorded palay yield in Metric Tons per Hectare for Pampanga in 2022?"
-            st.switch_page(page_chat_obj)
-    with c4:
-        if st.button("Compare the palay production volume of Pampanga and Tarlac during the 2022 wet season.", use_container_width=True):
-            st.session_state.pending_prompt = "Compare the palay production volume of Pampanga and Tarlac during the 2022 wet season."
+        if st.button("How was rainfall associated with palay yield in Nueva Ecija from 2018 to 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "How was rainfall associated with palay yield in Nueva Ecija from 2018 to 2023?"
             st.switch_page(page_chat_obj)
 
-    st.markdown("#### Machine Learning & Correlation")
+        if st.button("How was weather associated with palay yield in Pampanga from 2018 to 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "How was weather associated with palay yield in Pampanga from 2018 to 2023?"
+            st.switch_page(page_chat_obj)
+
+    with c4:
+        if st.button("What weather conditions were associated with palay yield in Tarlac from 2018 to 2023?", use_container_width=True):
+            st.session_state.pending_prompt = "What weather conditions were associated with palay yield in Tarlac from 2018 to 2023?"
+            st.switch_page(page_chat_obj)
+
+    st.markdown("#### Yield & Price Prediction")
     c5, c6 = st.columns(2)
+
     with c5:
-        if st.button("Predict the palay yield for Bulacan in 2024 based on the antecedent growing season weather.", use_container_width=True):
-            st.session_state.pending_prompt = "Predict the palay yield for Bulacan in 2024 based on the antecedent growing season weather."
+        if st.button("What is the predicted palay yield for Nueva Ecija in September 2026, and what weather conditions explain the estimate?", use_container_width=True):
+            st.session_state.pending_prompt = "What is the predicted palay yield for Nueva Ecija in September 2026, and what weather conditions explain the estimate?"
             st.switch_page(page_chat_obj)
-        if st.button("How did extreme heat days correlate with palay production in Tarlac between 2015 and 2023?", use_container_width=True):
-            st.session_state.pending_prompt = "How did extreme heat days correlate with palay production in Tarlac between 2015 and 2023?"
-            st.switch_page(page_chat_obj)
+
     with c6:
-        if st.button("Based on climatic conditions, predict the retail price of palay in Zambales for 2024.", use_container_width=True):
-            st.session_state.pending_prompt = "Based on climatic conditions, predict the retail price of palay in Zambales for 2024."
-            st.switch_page(page_chat_obj)
-        if st.button("According to literature, how does prolonged heat stress impact palay yield?", use_container_width=True):
-            st.session_state.pending_prompt = "According to literature, how does prolonged heat stress impact palay yield?"
+        if st.button("What is the predicted rice price for Pampanga in September 2026, and what factors in the available data may help explain it?", use_container_width=True):
+            st.session_state.pending_prompt = "What is the predicted rice price for Pampanga in September 2026, and what factors in the available data may help explain it?"
             st.switch_page(page_chat_obj)
 
 
