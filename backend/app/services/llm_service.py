@@ -365,10 +365,13 @@ def analyze_correlation_tool(location: str, crop_type: str, weather_variables: L
     if obs_df.empty:
         return f"No correlation data available for {province} ({time_period_value})."
 
-    r = r.droplevel("province")
+    r = details.get("correlations")
+    if r is not None and "province" in r.index.names:
+        r = r.droplevel("province")
+        
     return (
         f"Correlation for {crop_type} in {province} ({start_date} to {end_date}, 4-month lag):\n"
-        + r.round(3).to_markdown(index=True)
+        + (r.round(3).to_markdown(index=True) if r is not None else "N/A")
     )
 
 @tool

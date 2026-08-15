@@ -93,51 +93,80 @@ MLFLOW_EXPERIMENT_NAME=WeatherTato
 ## 🏛️ System Architecture
 
 ### A. High-Level Pipeline Diagram
-The diagram below maps out the sequential execution flow across each of the 5 nodes in the LangGraph pipeline:
+The diagram below maps out the sequential execution flow of the LangGraph pipeline, explicitly detailing the ReAct loop, ML tool integration, and violation routing:
 
 ```mermaid
 graph TD
     %% Define Node Styles
-    classDef io fill:#f8fafc,stroke:#64748b,stroke-width:2px;
-    classDef check fill:#fff1f2,stroke:#f43f5e,stroke-width:2px;
-    classDef route fill:#fef9c3,stroke:#eab308,stroke-width:2px;
-    classDef service fill:#eff6ff,stroke:#3b82f6,stroke-width:2px;
-    classDef gen fill:#f0fdf4,stroke:#22c55e,stroke-width:2px;
-    classDef rag fill:#fdf4ff,stroke:#a855f7,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef io fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#000;
+    classDef check fill:#fff1f2,stroke:#f43f5e,stroke-width:2px,color:#000;
+    classDef route fill:#fef9c3,stroke:#eab308,stroke-width:2px,color:#000;
+    classDef reason fill:#e0e7ff,stroke:#6366f1,stroke-width:2px,color:#000;
+    classDef act fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#000;
+    classDef gen fill:#f0fdf4,stroke:#22c55e,stroke-width:2px,color:#000;
+    classDef rag fill:#fdf4ff,stroke:#a855f7,stroke-width:2px,stroke-dasharray: 5 5,color:#000;
 
     %% Elements
-    Input([Farmer Input Query]):::io
+    Input([User Query]):::io
 
-    subgraph Pipeline ["LangGraph ReAct Pipeline"]
-        Node1["🛡️ 1. Guardrails Node<br/>Checks safety, injections,<br/>and agricultural disclaimers"]:::check
+    subgraph Pipeline ["LangGraph Multi-Agent Architecture"]
+        Guard["🛡️ 1. Guardrails<br/>(PII, Prompt Injections, Scope)"]:::check
+        
+        Extract["🏷️ 2. Task Extraction<br/>(Action & Slot Parsing)"]:::route
+        Clarify["❓ Clarification<br/>(Prompt for missing slots)"]:::route
 
-        Node2["🏷️ 2. Task Classifier<br/>Routes query intent<br/>(forecast, analytics, chat)"]:::route
+        subgraph ReAct ["ReAct Loop (Reason & Act)"]
+            ToolCaller["🧠 3. Tool Caller (Think/Reason)<br/>Decides which tools to invoke based on slots"]:::reason
+            
+            subgraph Tools ["Available Tools"]
+                WTool["☁️ Weather Tool"]:::act
+                CTool["🌾 Crop Tool"]:::act
+                CorrTool["📊 Correlation Tool"]:::act
+                PredTool["📈 Prediction (Lasso/Ridge)"]:::act
+            end
+            
+            ToolExec["⚙️ 4. Tool Execution (Act)<br/>Runs the requested tool"]:::act
+        end
 
-        Node3["🔍 3. Tool Caller<br/>Extracts parameter slots &<br/>resolves location coordinates"]:::service
-
-        Node4["⚡ 4. Tool Execution<br/>Queries Open-Meteo API &<br/>aggregates data with Pandas"]:::service
-
-        Node5["✍️ 5. Generation Node<br/>Translates metrics into plain,<br/>factual summaries"]:::gen
+        Gen["✍️ 5. Generation<br/>(Final Response Synthesis)"]:::gen
+        RAG["📚 Controlled RAG<br/>(ChromaDB Literature Retrieval)"]:::rag
+        Mem["💾 Memory Update<br/>(Sliding Window Summary)"]:::io
     end
 
     Output([Formatted Response]):::io
 
-    %% Connections & Conditional Edges
-    Input --> Node1
+    %% Connections
+    Input --> Guard
 
-    Node1 -->|Safe / Valid| Node2
-    Node1 -->|Violation / Disclaimer| Node5
+    %% Guardrail Routing
+    Guard -->|Allowed| Extract
+    Guard -->|Violation / Disclaimer<br/>(Bypasses Tools & RAG)| Gen
 
-    Node2 -->|Forecast / Analytics| Node3
-    Node2 -->|General Chat / Off-Topic| Node5
+    %% Task Extraction Routing
+    Extract -->|Missing Slots| Clarify
+    Clarify --> Mem
+    
+    Extract -->|General / Off-topic| Gen
+    Extract -->|Action Ready| ToolCaller
 
-    %% ReAct Loop (Reasoning + Acting)
-    Node3 -->|Plan: Tool Call / Slots Filled| Node4
-    Node4 -->|Act: Append ToolMessage Observation| Node3
-
-    Node3 -->|Observe: No More Tool Calls / Location Missing| Node5
-
-    Node5 --> Output
+    %% ReAct Loop Logic
+    ToolCaller -->|Yields Tool_Calls| ToolExec
+    ToolExec -->|Weather Data| WTool
+    ToolExec -->|Crop Data| CTool
+    ToolExec -->|Correlation| CorrTool
+    ToolExec -->|Predictions| PredTool
+    
+    WTool -->|Observation| ToolCaller
+    CTool -->|Observation| ToolCaller
+    CorrTool -->|Observation| ToolCaller
+    PredTool -->|Observation| ToolCaller
+    
+    ToolCaller -->|No More Tools Required| Gen
+    
+    %% RAG & Gen
+    Gen -.->|Fetches Context| RAG
+    Gen --> Mem
+    Mem --> Output
 ```
 
 ### B. Tech Stack
@@ -179,36 +208,46 @@ The system maintains and updates an interactive conversation state across all no
 
 #### The Message Data Flow
 1. **User Query + History**: The Streamlit frontend sends the new user prompt alongside the full session chat history to `/api/chat`. The backend maps the history into LangChain message instances and seeds the `AgentState.messages` list before graph execution begins.
-2. **Safety Guardrails**: The input enters the `guardrails` node. Prompt injections and queries requesting operational farming advice are blocked here.
-3. **Intent Classification**: The `classifier` node routes the query into weather analytics, forecasts, or general chat intents. The full conversation history is injected into the classifier prompt to allow follow-up queries (e.g. answering a location slot request with just a city name) to be correctly classified in context.
-4. **Slot Resolution**: The `tool_caller` node binds tool configurations and maps user questions to correct Open-Meteo variables. History messages are sequenced after the system instructions so the LLM can reconstruct incomplete multi-turn queries (e.g. combining a previous location-less question with a follow-up location reply).
-5. **API Retrieval & Pre-calculation**: The `tool_execution` node resolves query locations into exact coordinate centroids using the local database, pulls telemetry from Open-Meteo, computes exact statistics using Pandas (e.g. total rain, average temperature) to prevent LLM hallucination, and renders a Markdown table.
-6. **Fact-Grounded Generation**: The `generation` node invokes the LLM with the full message history plus the RAG Markdown table, enabling contextual, memory-aware plain-language summaries grounded in retrieved weather telemetry.
+2. **Safety Guardrails**: The input enters the `guardrails` node. Prompt injections and queries requesting operational farming advice are blocked here. If a violation is detected, the query routes directly to the Generation node to output a refusal/disclaimer, completely bypassing the ReAct loop and RAG retrieval.
+3. **Task Extraction & Routing**: The query is routed to `task_extraction` to parse the required action (e.g., `PREDICT_OUTCOME`) and extract parameter slots (e.g., Location, Crop Type, Date). If slots are missing, it routes to a `Clarification` node to ask the user. If complete, it routes to the ReAct loop.
+4. **ReAct Loop (Reason & Act)**: The agent enters an iterative loop:
+   - **Think/Reason (Tool Caller)**: The LLM analyzes the slots and decides which tool to call.
+   - **Act (Tool Execution)**: The system executes the selected tool (e.g., fetching weather, querying SQLite crop data, running the Ridge/Lasso predictive models).
+   - **Observe**: The tool returns an observation to the LLM, and the loop repeats until the LLM decides it has enough information to formulate an answer.
+5. **RAG & Generation**: The `generation` node takes the numerical observations from the ReAct loop, triggers a ChromaDB similarity search to fetch relevant agronomic literature (RAG), and synthesizes a grounded, plain-language response.
+6. **Memory Update**: A sliding window summarization node prunes and compresses the chat history to prevent context overflow before returning the final response to the user.
 
 
 ---
 
 ## 🧪 Automated Evaluation & Testing
 
-WeatherTato implements an automated test suite across 3 conceptual layers to guarantee chatbot correctness and verify corner cases. The evaluations are located in the `evals/` directory.
+WeatherTato implements a comprehensive, multi-layered evaluation suite to guarantee chatbot correctness, safety, and End-to-End (E2E) trajectory success. All tests and reports are located in the `evals/` directory.
 
 ### Evaluation Layers:
-1. **Layer 1 (Unit)**: Deterministic heuristic checks testing Guardrails (PII redaction, Prompt Injection), Location Resolution, and SQL/Tool constraints.
-2. **Layer 2 (RAG)**: Assesses knowledge retrieval using Precision@2, Recall@2, and Mean Reciprocal Rank (MRR) against a curated literature collection.
-3. **Layer 3 (LLM-Dependent)**: Topics classification guardrails, absolute grading (LLM-as-judge), and pairwise grading with positional bias checks.
+1. **Layer 1: Unit & Component Testing (`run_evals.py`)**
+   - **Unit**: Deterministic heuristic checks testing Guardrails (PII redaction, Prompt Injection), Location Resolution, and SQL/Tool constraints.
+   - **RAG**: Assesses knowledge retrieval using Precision@K, Recall@K, and Mean Reciprocal Rank (MRR) against a curated literature collection.
+   - **LLM-Judge**: Topic classification guardrails and basic absolute grading (LLM-as-judge) for isolated prompts.
+2. **Layer 2: End-to-End Pipeline Evaluation (`run_final_e2e.py`)**
+   - Evaluates the agent's full ReAct trajectory (extracting slots, calling tools in correct sequence, synthesizing final answer).
+   - Simulates complete user queries across all supported capabilities (Weather, Correlation, Edge Cases, Follow-ups).
+   - Applies LLM-as-Judge to score the final generated answers for **Faithfulness (Groundedness)** and **Helpfulness (Overall)** based strictly on the actual tool observations returned during execution.
 
 ### Running the Test Suite:
 1. Ensure your virtual environment is activated and the active `.env` file has `DEEPSEEK_API_KEY` configured.
-2. Run the evaluation script in your terminal to evaluate all layers:
+2. **To run the component-level evaluations:**
    ```bash
    python evals/run_evals.py --layer all
    ```
-   Or target a specific layer (e.g., `unit`, `rag`, `llm`):
-   ```bash
-   python evals/run_evals.py --layer unit
-   ```
-3. Metric reports (e.g., `metrics_unit.json`, `metrics_rag.json`) will be generated inside the `evals/` directory.
+   *(Or target a specific layer: `python evals/run_evals.py --layer unit`)*
+   - **Checking Correctness**: Review `metrics_unit.json` and `metrics_rag.json` generated in the `evals/` folder.
 
+3. **To run the End-to-End evaluation:**
+   ```bash
+   python evals/run_final_e2e.py
+   ```
+   - **Checking Correctness**: Open `evals/final_evaluation_report.md`. This comprehensive markdown report contains the Task Success Rate, Trajectory Success Rate, Latency stats, and a raw results table showing the exact tools called and judge scores for every test query.
 ---
 
 ## 🔗 Quick Links
