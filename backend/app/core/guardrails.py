@@ -169,13 +169,13 @@ OUT_OF_SCOPE_PATTERNS = [
 def remove_pii(text: str) -> str:
     """
     Redacts personally identifiable information (PII) from the input string.
-    
-    Uses regular expressions to identify and mask sensitive information 
+
+    Uses regular expressions to identify and mask sensitive information
     such as email addresses, phone numbers, and names before processing.
-    
+
     Args:
         text (str): The raw input string from the user.
-        
+
     Returns:
         str: The sanitized string with PII replaced by placeholder tags.
     """
@@ -190,13 +190,13 @@ def remove_pii(text: str) -> str:
 def is_prompt_injection(text: str) -> bool:
     """
     Detects potential prompt injection or jailbreak attempts.
-    
-    Checks the input text against a predefined list of malicious phrases 
+
+    Checks the input text against a predefined list of malicious phrases
     designed to override system instructions or bypass restrictions.
-    
+
     Args:
         text (str): The user's input string.
-        
+
     Returns:
         bool: True if an injection pattern is found, False otherwise.
     """
@@ -210,13 +210,13 @@ def is_prompt_injection(text: str) -> bool:
 def is_out_of_scope(text: str) -> bool:
     """
     Identifies if a query requests actionable recommendations or forecasts.
-    
-    Matches the input against phrase-level patterns for topics that the 
+
+    Matches the input against phrase-level patterns for topics that the
     system is not authorized to answer, such as farming advice or future weather.
-    
+
     Args:
         text (str): The user's input string.
-        
+
     Returns:
         bool: True if the text contains out-of-scope patterns, False otherwise.
     """
@@ -234,7 +234,7 @@ TOPICS = {
     # Allowed (allowed=true)
     "WEATHER": "Questions about historical or current weather conditions and weather variables.",
     "CROP": "Questions about palay (rice) yield or price.",
-    "RELATIONSHIP": "Questions about correlation or prediction involving weather and palay yield or price.",
+    "RELATIONSHIP": "Questions about correlation, prediction, or explaining predictions and historical changes involving weather and palay yield or price.",
     "GENERAL": "Questions about the chatbot's capabilities, supported information, available analyses, or how to use the chatbot.",
     # Out of scope (allowed=false)
     "FORECAST": "Requests for weather forecasts or weather-related predictions about future weather conditions.",
@@ -246,7 +246,7 @@ TOPICS = {
 TOPIC_SYSTEM_PROMPT = (
     "You are a topic classifier for a weather and agricultural information chatbot.\n\n"
     "Classify the user's message into EXACTLY ONE of these topics:\n"
-    + "\n".join(f"- {topic}: {definition}" for topic, definition in TOPICS.items()) 
+    + "\n".join(f"- {topic}: {definition}" for topic, definition in TOPICS.items())
     + "\n\nOutput ONLY a JSON object in the exact format:\n"
     '{"topic": "TOPIC_NAME", "allowed": true, "confidence": 0.95}\n\n'
 
@@ -269,6 +269,9 @@ TOPIC_FEW_SHOT = [
     {"role": "user",      "content": "What is the correlation between rainfall and palay yield in Pampanga?"},
     {"role": "assistant", "content": '{"topic": "RELATIONSHIP", "allowed": true, "confidence": 0.98}'},
 
+    {"role": "user",      "content": "Why did palay yield drop in Pampanga in 2024?"},
+    {"role": "assistant", "content": '{"topic": "RELATIONSHIP", "allowed": true, "confidence": 0.96}'},
+
     {"role": "user",      "content": "What kind of data can you analyze?"},
     {"role": "assistant", "content": '{"topic": "GENERAL", "allowed": true, "confidence": 0.99}'},
 
@@ -287,16 +290,16 @@ TOPIC_FEW_SHOT = [
 def is_on_topic(user_message: str, llm, history: list = None) -> dict:
     """
     Evaluates whether the user's message is within the supported topics using the LLM.
-    
-    This acts as a dynamic guardrail, utilizing a few-shot prompted LLM to classify 
-    the intent of the user. It enforces strict fallback rules to prevent the agent 
+
+    This acts as a dynamic guardrail, utilizing a few-shot prompted LLM to classify
+    the intent of the user. It enforces strict fallback rules to prevent the agent
     from answering off-topic or restricted queries.
-    
+
     Args:
         user_message (str): The text of the user's query.
         llm: The LLM Model instance used for classification.
         history (list, optional): Previous conversation messages for context.
-        
+
     Returns:
         dict: A dictionary containing:
             - topic (str): The identified topic or 'UNKNOWN'.
@@ -305,14 +308,14 @@ def is_on_topic(user_message: str, llm, history: list = None) -> dict:
             - fallback (bool): True if the system should trigger a safe fallback response.
     """
     messages = [SystemMessage(content=TOPIC_SYSTEM_PROMPT)]
-    
+
     # Append few-shot examples to guide the LLM's expected output format
     for ex in TOPIC_FEW_SHOT:
         if ex["role"] == "user":
             messages.append(HumanMessage(content=ex["content"]))
         else:
             messages.append(AIMessage(content=ex["content"]))
-            
+
     # Incorporate recent conversational history (last 4 valid messages) for context
     if history:
         conversational_history = []
@@ -321,49 +324,49 @@ def is_on_topic(user_message: str, llm, history: list = None) -> dict:
                 conversational_history.append(msg)
             elif isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", None):
                 conversational_history.append(AIMessage(content=msg.content))
-        
+
         messages.extend(conversational_history[-4:])
-                
+
     # Ensure the current user query is at the end of the message list
     if not history or not (isinstance(history[-1], HumanMessage) and history[-1].content == user_message):
         messages.append(HumanMessage(content=user_message))
-        
+
     try:
         # Invoke the LLM to classify the topic
         response = llm.invoke(messages)
         text = response.content
-        
+
         # Extract the JSON block from the LLM's response
         match = re.search(r'\{.*?\}', text, re.DOTALL)
         if not match:
             raise ValueError("No JSON found")
         result = json.loads(match.group())
-        
+
         # Parse the extracted JSON fields
         topic = result.get("topic", "UNKNOWN")
         allowed = result.get("allowed", False)
         confidence = result.get("confidence", 0.0)
-        
+
         # Normalize unknown or unsupported topics
         if topic not in TOPICS and topic != "ADVICE":
             topic = "UNKNOWN"
-            
+
         # Apply strict fallback rules according to the condition table
         # Fallback if confidence is too low
         if confidence < 0.5:
             return {"topic": "UNKNOWN", "allowed": False, "confidence": confidence, "fallback": True}
-            
+
         # Fallback if the topic is explicitly restricted (e.g., farming advice or completely off-topic)
         if topic in ["ADVICE", "OFF_TOPIC", "UNKNOWN"]:
             return {"topic": topic, "allowed": False, "confidence": confidence, "fallback": True}
-            
+
         # Fallback if the LLM flagged it as not allowed
         if not allowed:
             return {"topic": topic, "allowed": False, "confidence": confidence, "fallback": True}
-            
+
         # Query is valid and supported
         return {"topic": topic, "allowed": True, "confidence": confidence, "fallback": False}
-        
+
     except Exception:
         # Safe fallback triggered on API failure or JSON parsing errors
         return {"topic": "UNKNOWN", "allowed": False, "confidence": 0.0, "fallback": True}

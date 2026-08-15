@@ -30,7 +30,7 @@ def page_chat():
     with col2:
         st.title(title)
         st.markdown("<div style='margin-top: -15px;'><i>Your all-in-one AI weather assistant!</i></div>", unsafe_allow_html=True)
-    
+
     import uuid
     if "session_id" not in st.session_state:
         st.session_state.session_id = str(uuid.uuid4())
@@ -61,7 +61,7 @@ def page_chat():
         st.session_state.messages.append({"role": "user", "content": new_prompt})
         with st.chat_message("user"):
             st.markdown(new_prompt)
-            
+
         # Get and show Assistant response
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
@@ -71,16 +71,16 @@ def page_chat():
                     response = requests.post(
                         f"{BACKEND_URL}/api/chat",
                         json={
-                            "user_query": new_prompt, 
+                            "user_query": new_prompt,
                             "session_id": st.session_state.session_id
                         },
-                        timeout=60
+                        timeout=120
                     )
                     response.raise_for_status()
                     data = response.json()
                     reply = data.get("response") or "Sorry, I couldn't process that at the moment. Please try again."
                     error_detail = data.get("error_detail")
-                    
+
                 except requests.exceptions.ConnectionError:
                     reply = "Sorry, I couldn't process that at the moment. Please try again."
                     error_detail = f"Could not connect to backend at {BACKEND_URL}. Make sure the server is running."
@@ -88,16 +88,16 @@ def page_chat():
                     reply = "Sorry, I couldn't process that at the moment. Please try again."
                     raw = e.response.text if hasattr(e, "response") and e.response is not None else str(e)
                     error_detail = raw
-                    
+
             message_placeholder.markdown(reply)
             if error_detail:
                 st.error(error_detail, icon=":material/error:")
             st.session_state.messages.append({
-                "role": "assistant", 
+                "role": "assistant",
                 "content": reply,
                 "error_detail": error_detail
             })
-            
+
         st.rerun()
 
 
@@ -108,35 +108,35 @@ def docs():
     st.markdown("""
     Welcome to the technical overview of WeatherTato. This guide outlines what the system is designed to do and the boundaries of its current implementation.
     """)
-    
+
     st.markdown("### What WeatherTato CAN Handle")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         st.success("**Historical Weather Analysis**\n\nRetrieves and aggregates historical meteorological data (temperature, rainfall, soil moisture, etc.) for any location in the Philippines.")
         st.success("**Crop Yield Analytics**\n\nAccesses historical palay (rice) production volume, yield (MT/ha), and retail prices specifically for Region III (Central Luzon).")
-    
+
     with col2:
         st.success("**Statistical Correlation**\n\nCalculates Pearson correlation coefficients between lagged weather variables and agricultural outcomes over specified time periods.")
         st.success("**Machine Learning Prediction**\n\nUses Scikit-Learn Lasso regression models to predict palay yield and prices based on historical weather patterns.")
-    
+
     st.success("**Literature Grounding (RAG)**\n\nCross-references statistical findings with a curated vector database of agronomic literature to explain *why* certain correlations exist.")
-    
+
     st.markdown("---")
-    
+
     st.markdown("### What WeatherTato CANNOT Handle")
-    
+
     col3, col4 = st.columns(2)
     with col3:
         st.error("**Future Weather Forecasts**\n\nThe system is strictly retrospective and analytical. It cannot predict if it will rain tomorrow or provide 7-day weather forecasts.")
         st.error("**Farming & Agronomic Advice**\n\nWeatherTato is an analytical tool, not an agronomist. It will not recommend fertilizer application rates, planting dates, or pest control strategies.")
-    
+
     with col4:
         st.error("**Outside Region III Crop Data**\n\nWhile weather can be queried nationwide, agricultural records (yield/production) are exclusively constrained to the provinces of Central Luzon.")
         st.error("**Non-Palay Crops**\n\nThe current database and predictive models are trained solely on Palay (rice). Corn and other crops are unsupported.")
-    
+
     st.markdown("---")
-    
+
     st.markdown("### Backend Architecture Overview")
     st.markdown("""
     WeatherTato operates on a **LangGraph** orchestration pipeline:
@@ -152,7 +152,7 @@ def samples():
     st.logo(logo)
     st.title("Sample Queries")
     st.markdown("Click any sample query below to instantly test it in the chat! These queries exhibit the full range of WeatherTato's analytical capabilities.")
-    
+
     st.markdown("#### Historical Weather & Extremes")
     c1, c2 = st.columns(2)
     with c1:
@@ -203,7 +203,7 @@ def settings():
     """Renders the settings page for managing application preferences and chat sessions."""
     st.logo(logo)
     st.title("Settings")
-    
+
     st.markdown("#### Preferences")
     wide_mode = st.toggle("Wide mode", value=st.session_state.get("wide_mode", True))
     if wide_mode != st.session_state.get("wide_mode", True):
@@ -216,7 +216,7 @@ def settings():
         import uuid
         st.session_state.session_id = str(uuid.uuid4())
         st.success("Chat history cleared and new backend session started!")
-        
+
 
 
 # ==========================================
@@ -225,8 +225,8 @@ def settings():
 
 # 1. Setup page config
 st.set_page_config(
-    page_title="WeatherTato", 
-    page_icon="frontend/assets/logo.png", 
+    page_title="WeatherTato",
+    page_icon="frontend/assets/logo.png",
     layout="wide" if st.session_state.get("wide_mode", True) else "centered"
 )
 

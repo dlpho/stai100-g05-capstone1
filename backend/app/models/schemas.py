@@ -52,7 +52,7 @@ class ExtractedSlots(BaseModel):
 
 class TaskExtraction(BaseModel):
     """Task and slot extraction structured output."""
-    action: Literal["GET_WEATHER_DATA", "GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_PRICE", "PREDICT_YIELD", "DESCRIBE_CAPABILITIES", "UNKNOWN"]
+    action: Literal["GET_WEATHER_DATA", "GET_CROP_DATA", "ANALYZE_CORRELATION", "PREDICT_PRICE", "PREDICT_YIELD", "EXPLAIN_PREDICTION", "DESCRIBE_CAPABILITIES", "UNKNOWN"]
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     slots: ExtractedSlots
 
@@ -83,7 +83,7 @@ class AgentState(BaseModel):
     slots: Optional[dict] = Field(default_factory=dict)
     missing_slots: Optional[List[str]] = Field(default_factory=list)
     is_ready_for_tools: bool = False
-    
+
     # RAG specific
     rag_context: Optional[str] = None
     requires_rag: bool = False

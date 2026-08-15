@@ -116,3 +116,60 @@ def predict_price(province_name: str, target_year: int, target_month: int) -> fl
 def predict_production(province_name: str, target_year: int, target_month: int) -> float:
     """Palay production volume prediction in Metric Tons (MT)."""
     return round(max(0.0, _predict("production", province_name, target_year, target_month)), 2)
+
+def explain_prediction(model_type: str, province_name: str, target_year: int, target_month: int) -> dict:
+    """
+    Explains the 'why' behind a prediction by calculating exact feature contributions.
+    Takes scaled inputs * coefficients to find what drove the prediction up or down.
+    """
+    row = _build_features(province_name, target_year, target_month)
+    model_pipeline = get_latest_model(model_type)
+
+    # Extract pipeline components
+    scaler = model_pipeline.named_steps["scaler"]
+    linear_model = model_pipeline.named_steps["model"]
+    feature_names = model_pipeline.feature_names_in_
+
+    # The intercept represents the baseline/average target value across the training data
+    intercept = float(linear_model.intercept_)
+    pred = float(model_pipeline.predict(row[feature_names])[0])
+    pred = max(0.0, pred)
+
+    # Scale the current inputs
+    scaled_features = scaler.transform(row[feature_names])[0]
+
+    # Calculate Contribution = Scaled Input * Coefficient
+    contributions = scaled_features * linear_model.coef_
+
+    df_impact = pd.DataFrame({
+        "feature": feature_names,
+        "raw_value": row[feature_names].iloc[0].values,
+        "contribution": contributions
+    })
+
+    # Filter out zero-weights (Lasso zeroes out features) and sort by impact
+    df_impact = df_impact[df_impact["contribution"] != 0]
+
+    # Top factors pushing prediction UP (Positive contributions)
+    top_up = df_impact[df_impact["contribution"] > 0].sort_values(by="contribution", ascending=False).head(4)
+    # Top factors pushing prediction DOWN (Negative contributions)
+    top_down = df_impact[df_impact["contribution"] < 0].sort_values(by="contribution", ascending=True).head(4)
+
+    def format_impacts(df):
+        return [
+            {
+                "feature": row.feature,
+                "current_value": round(row.raw_value, 2),
+                "impact_score": round(row.contribution, 3)
+            }
+            for _, row in df.iterrows()
+        ]
+
+    return {
+        "province": province_name,
+        "target_period": f"{target_year}-{target_month:02d}",
+        "predicted_value": round(pred, 3),
+        "baseline_average": round(intercept, 3),
+        "factors_pushing_prediction_DOWN": format_impacts(top_down),
+        "factors_pushing_prediction_UP": format_impacts(top_up)
+    }

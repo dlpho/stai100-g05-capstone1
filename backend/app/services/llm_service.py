@@ -26,7 +26,7 @@ from services.rag_service import retrieve_rrl_context
 from services.correlation_service import correlations_by_province, WEATHER_VAR_MAP, compute_detailed_correlation
 from langchain_core.runnables import RunnableConfig
 from services.location_resolve import resolve_location_sqlite
-from services.predict_service import predict_price, predict_yield
+from services.predict_service import predict_price, predict_yield, explain_prediction
 from core.env import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, DEEPSEEK_BASE_URL
 
 # Initialize LLM
@@ -86,9 +86,9 @@ def node_task_extraction(state: AgentState) -> dict:
     if topic == "WEATHER":
         allowed_actions = ["GET_WEATHER_DATA", "DESCRIBE_CAPABILITIES"]
     elif topic in ["CROP", "CROP_OUTCOMES"]:
-        allowed_actions = ["GET_CROP_DATA", "PREDICT_YIELD", "PREDICT_PRICE", "DESCRIBE_CAPABILITIES"]
+        allowed_actions = ["GET_CROP_DATA", "PREDICT_YIELD", "PREDICT_PRICE", "EXPLAIN_PREDICTION","DESCRIBE_CAPABILITIES"]
     elif topic in ["RELATIONSHIP"]:
-        allowed_actions = ["ANALYZE_CORRELATION", "PREDICT_YIELD", "PREDICT_PRICE", "DESCRIBE_CAPABILITIES"]
+        allowed_actions = ["ANALYZE_CORRELATION", "PREDICT_YIELD", "PREDICT_PRICE", "EXPLAIN_PREDICTION", "DESCRIBE_CAPABILITIES"]
     elif topic == "GENERAL":
         allowed_actions = ["DESCRIBE_CAPABILITIES"]
     else:
@@ -150,6 +150,7 @@ def node_task_extraction(state: AgentState) -> dict:
         "ANALYZE_CORRELATION": {"location", "time_period", "weather_variables", "crop_type", "outcome_metric"},
         "PREDICT_YIELD": {"location", "time_period", "crop_type"},
         "PREDICT_PRICE": {"location", "time_period", "crop_type"},
+        "EXPLAIN_PREDICTION": {"location", "time_period", "crop_type"},
     }.get(action, set())
 
     # Inherit only the slots relevant to the new action
@@ -174,6 +175,8 @@ def node_task_extraction(state: AgentState) -> dict:
     elif action == "PREDICT_YIELD":
         required = ["location", "time_period", "crop_type"]
     elif action == "PREDICT_PRICE":
+        required = ["location", "time_period", "crop_type"]
+    elif action == "EXPLAIN_PREDICTION":
         required = ["location", "time_period", "crop_type"]
     elif action == "DESCRIBE_CAPABILITIES" or action == "UNKNOWN":
         required = []
@@ -417,6 +420,34 @@ def predict_price_tool(location: str, target_year: int, target_month: int, confi
     except Exception as e:
         return f"Could not generate price prediction for {resolved_prov} on {target_year}-{target_month:02d}. Error: {e}"
 
+@tool
+def explain_prediction_tool(model_type: str, target_year: int, target_month: int, config: RunnableConfig = None) -> str:
+    """Explains the 'why' behind a prediction by calculating exact feature contributions.
+    Args:
+        model_type: The type of prediction to explain (e.g., 'yield' or 'price').
+        target_year: The year for the prediction (e.g., 2024).
+        target_month: The month for the prediction as an integer (1-12).
+    """
+    state: AgentState = config.get("configurable", {}).get("state")
+    if not state or not state.location:
+        return "Error: Location not provided or resolved."
+
+    resolved_prov = state.location.province
+
+    try:
+        data = explain_prediction(model_type, resolved_prov, target_year, target_month)
+
+        return json.dumps({
+            "province": data.get("province", resolved_prov),
+            "target_period": data.get("target_period", f"{target_year}-{target_month:02d}"),
+            "predicted_value": data.get("predicted_value"),
+            "baseline_average": data.get("baseline_average"),
+            "positive_factors": data.get("factors_pushing_prediction_UP", []),
+            "negative_factors": data.get("factors_pushing_prediction_DOWN", [])
+        }, indent=2)
+    except Exception as e:
+        return f"Could not explain the {model_type} prediction for {resolved_prov} on {target_year}-{target_month:02d}. Error: {e}"
+
 # ---------------------------------------------------------------------------
 # MODULE: REACT LOOP — Tool Caller Node (Reason step)
 # ---------------------------------------------------------------------------
@@ -440,7 +471,8 @@ def node_tool_caller(state: AgentState) -> dict:
         get_crop_data_tool,
         analyze_correlation_tool,
         predict_yield_tool,
-        predict_price_tool
+        predict_price_tool,
+        explain_prediction_tool
     ]
     llm_with_tools = llm.bind_tools(tools)
 
@@ -505,6 +537,8 @@ def node_tool_execution(state: AgentState) -> dict:
                 md = predict_yield_tool.invoke(args, config)
             elif name == "predict_price_tool":
                 md = predict_price_tool.invoke(args, config)
+            elif name == "explain_prediction_tool":
+                md = explain_prediction_tool.invoke(args, config)
             else:
                 md = f"Unknown tool: {name}"
 
@@ -517,9 +551,6 @@ def node_tool_execution(state: AgentState) -> dict:
         for tool_call in state.tool_calls:
             messages.append(ToolMessage(content=f"Error executing tool: {e}", tool_call_id=tool_call.get("id", "")))
         return {"messages": messages, "error": f"Tool execution failed: {e}", "tool_calls": []}
-
-
-
 
 # ---------------------------------------------------------------------------
 # MODULE: RAG RETRIEVAL & GENERATION
@@ -540,7 +571,7 @@ def node_rag_retrieval(state: AgentState) -> dict:
         outcome = state.slots.get("outcome_metric", "rice yield").lower()
         query = f"relationship between {vars_requested} and {outcome}"
 
-    elif state.active_action == "PREDICT_OUTCOME":
+    elif state.active_action == "PREDICT_YIELD" or state.active_action == "PREDICT_PRICE" or state.active_action == "EXPLAIN_PREDICTION":
         query = "predicting rice yield from weather variables"
 
     elif "price" in state.user_query.lower() or state.topic == "MARKET":
@@ -695,7 +726,7 @@ def router_after_tool_caller(state: AgentState) -> str:
     explanation_keywords = ["why", "explain", "how does", "interpretation", "interpret", "reason", "impact"]
     needs_explanation = any(kw in state.user_query.lower() for kw in explanation_keywords)
 
-    if state.active_action in ["ANALYZE_CORRELATION", "PREDICT_OUTCOME"] or needs_explanation:
+    if state.active_action in ["ANALYZE_CORRELATION", "EXPLAIN_PREDICTION"] or needs_explanation:
         return "rag_retrieval"
 
     return "generation"
